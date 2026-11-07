@@ -9,12 +9,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..models.discovery import DiscoveryOptions
-from .candidates import ALGORITHM_VERSION, WEIGHTS, rank_candidates, valid_candidate, topic_groups, quality_score, rejection_reasons
+from .candidates import (
+    ALGORITHM_VERSION, WEIGHTS, rank_candidates, partition_discovery_candidates,
+    valid_candidate, topic_groups, quality_score, rejection_reasons, compute_scoring_factors
+)
 from .enhanced_candidates import build_enhanced_candidates
 from .media import ProcessingError, Cancelled, check_cancel
 from .ollama import Ollama
 from .sentences import excerpt_for_range, sentence_units
-from .discovery_strategies import adjust_candidate_priorities
+from .discovery_strategies import adjust_candidate_priorities, get_category_weights
 
 logger = logging.getLogger(__name__)
 ACTIVE_STATES = {'queued', 'preparing_transcript', 'analyzing_topics', 'generating_candidates',
@@ -58,14 +61,21 @@ class Discovery:
                 return {**public, 'status': 'stale', 'message': 'Transcript changed. Find Best Clips again.'}
             transcript = json.loads(source)
             edits = self.store.edits(project_id)
-            for clip in result['clips']:
-                if clip['id'] in edits:
-                    clip.update({key: edits[clip['id']][key] for key in ('start', 'end')})
-                    clip['duration'] = round(clip['end'] - clip['start'], 3)
-                    clip['adjusted'] = clip['start'] != clip['original_start'] or clip['end'] != clip['original_end']
-                    clip['excerpt'] = excerpt_for_range(transcript, clip['start'], clip['end'])
+            for clip_list_key in ('clips', 'top_picks', 'more_discoveries'):
+                for clip in result.get(clip_list_key, []):
+                    if clip['id'] in edits:
+                        clip.update({key: edits[clip['id']][key] for key in ('start', 'end')})
+                        clip['duration'] = round(clip['end'] - clip['start'], 3)
+                        clip['adjusted'] = clip['start'] != clip['original_start'] or clip['end'] != clip['original_end']
+                        clip['excerpt'] = excerpt_for_range(transcript, clip['start'], clip['end'])
+            if 'top_picks' not in result:
+                result['top_picks'] = result.get('clips', [])
+            if 'more_discoveries' not in result:
+                result['more_discoveries'] = []
             saved = {key: value for key, value in result.items() if key not in {'fingerprint', 'assessments', 'settings'}}
-            return {**saved, **public, 'clips': result['clips'], 'result_settings': result.get('settings'),
+            return {**saved, **public, 'clips': result['clips'], 'top_picks': result.get('top_picks', result['clips']),
+                    'more_discoveries': result.get('more_discoveries', []),
+                    'result_settings': result.get('settings'),
                     'previous_result': state['status'] != 'completed',
                     'message': result.get('message') if state['status'] == 'completed' else None}
         except (OSError, ValueError, TypeError, KeyError):
@@ -166,15 +176,21 @@ class Discovery:
                     progress(evaluated=offset + 1)
             check_cancel(cancel)
             progress('ranking_clips')
-            clips = rank_candidates(candidates, assessments, options.clip_count, allow_lower=True)
+            top_picks, more_discoveries = partition_discovery_candidates(
+                candidates, assessments, options.clip_count, allow_lower=True, category=category
+            )
+            clips = top_picks
             if not all(valid_candidate(c, duration, options) for c in clips):
                 raise ProcessingError('Candidate timestamps failed final validation. No new suggestions were saved.')
-            eligible = len(rank_candidates(candidates, assessments, len(candidates), deduplicate=False)) if candidates else 0
+            category_weights = get_category_weights(category)
+            eligible = len(rank_candidates(candidates, assessments, len(candidates), deduplicate=False, category=category)) if candidates else 0
             strong = sum(c['confidence'] == 'strong' for c in clips)
             lower = len(clips) - strong
             message = f'Found {strong} strong {"clip" if strong == 1 else "clips"} out of {options.clip_count} requested.'
             if lower:
                 message += f' Also showing {lower} lower-confidence suggestions for manual review; these did not pass the strong-clip criteria.' 
+            if more_discoveries:
+                message += f' Discovered {len(more_discoveries)} additional ranked candidate moments.'
             if not units or sum(len(u['text'].split()) for u in units) < 18:
                 message += ' No reliable clips: not enough meaningful timed speech. Review or re-transcribe the source.'
             elif not candidates:
@@ -185,25 +201,33 @@ class Discovery:
                     message += ' Overlapping or repetitive moments were also removed.'
                 message += ' Try a different duration range or review transcription quality; the requested count is a target.'
             by_id = {a.candidate_id: a for a in assessments}
-            selected = {c['id']: c['confidence'] for c in clips}
+            selected = {c['id']: c['confidence'] for c in clips + more_discoveries}
             audit = []
             for candidate in candidates:
-                a = by_id[candidate['id']]
+                a = by_id.get(candidate['id'])
+                if not a:
+                    continue
+                factors = compute_scoring_factors(a, candidate, category)
+                reasons = rejection_reasons(a, candidate, category)
                 entry = {'candidate_id': candidate['id'], 'start': candidate['start'], 'end': candidate['end'],
                          'duration': candidate['duration'], 'technical_failures': [],
-                         'scores': {key: getattr(a, key) for key in WEIGHTS}, 'score': quality_score(a),
-                         'quality_rejections': rejection_reasons(a, candidate), 'model_reason': a.reason,
-                         'outcome': selected.get(candidate['id'], 'quality_rejected' if rejection_reasons(a, candidate) else 'overlap_or_count_limit')}
+                         'scores': {key: getattr(a, key) for key in category_weights}, 'score': quality_score(a, category),
+                         'scoring_factors': factors,
+                         'quality_rejections': reasons, 'model_reason': a.reason,
+                         'outcome': selected.get(candidate['id'], 'quality_rejected' if reasons else 'overlap_or_count_limit')}
                 audit.append(entry)
                 logging.getLogger('uvicorn.error').info('clipforge.candidate %s', json.dumps({'project_id': project_id, **entry}))
             result = {'schema_version': 2, 'candidate_diagnostics': audit, 'algorithm_version': ALGORITHM_VERSION, 'fingerprint': self.fingerprint(source, options),
                       'settings': options.model_dump(), 'transcript_sha256': hashlib.sha256(source).hexdigest(),
                       'model': self.settings.ollama_model, 'model_digest': engine_status.get('digest'),
-                      'created_at': datetime.now(timezone.utc).isoformat(), 'score_weights': WEIGHTS,
+                      'created_at': datetime.now(timezone.utc).isoformat(), 'score_weights': category_weights,
+                      'category': category,
                       'score_label': 'Heuristic estimates, not guaranteed audience performance',
-                      'candidate_count': len(candidates), 'topic_count': len(groups), 'clips': clips, 'message': message,
+                      'candidate_count': len(candidates), 'topic_count': len(groups),
+                      'clips': clips, 'top_picks': clips, 'more_discoveries': more_discoveries, 'message': message,
                       'diagnostics': {'invalid_timestamps': invalid_count, 'quality_rejected': len(candidates) - eligible,
-                                      'quality_eligible': eligible, 'selected': len(clips), 'strong_returned': strong, 'lower_confidence_returned': lower},
+                                      'quality_eligible': eligible, 'selected': len(clips), 'more_discoveries_count': len(more_discoveries),
+                                      'strong_returned': strong, 'lower_confidence_returned': lower},
                       'assessments': [a.model_dump() for a in assessments]}
             with commit_lock if commit_lock is not None else nullcontext():
                 check_cancel(cancel)

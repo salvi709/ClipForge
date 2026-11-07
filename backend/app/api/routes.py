@@ -22,7 +22,7 @@ from ..services.performance import record
 from ..services.export import ClipExporter, ExportError
 from ..services.evaluation import EvaluationMetrics
 from ..models.discovery import ClipEdit, TranscriptionOptions, DiscoveryOptions, CategoryOverride
-from ..models.export import ExportRequest, BatchExportRequest, ClipFeedback
+from ..models.export import ExportRequest, BatchExportRequest, ClipFeedback, ManualClipCreate
 
 router = APIRouter(prefix='/api')
 
@@ -225,7 +225,8 @@ def adjust_clip(project_id: UUID, clip_id: str, edit: ClipEdit, request: Request
         result = jobs.discovery.result(str(project_id))
         if result['status'] != 'completed':
             raise HTTPException(409, 'Find clips before adjusting their timing.')
-        if not any(clip['id'] == clip_id for clip in result['clips']):
+        all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+        if not any(clip['id'] == clip_id for clip in all_clips):
             raise HTTPException(404, 'Clip not found.')
         duration = json.loads(row['metadata'])['duration']
         if edit.end - edit.start < 1 or edit.end > duration:
@@ -274,14 +275,21 @@ async def export_clip(project_id: UUID, clip_id: str, export_req: ExportRequest,
     """Export a single clip as MP4."""
     row = project(request, project_id)
     
-    # Get discovery results to find clip
+    # Get discovery results or manual clips to find clip
     result = request.app.state.jobs.discovery.result(str(project_id))
-    if result['status'] != 'completed':
-        raise HTTPException(409, 'Complete discovery before exporting clips.')
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
     
-    clip = next((c for c in result['clips'] if c['id'] == clip_id), None)
     if not clip:
-        raise HTTPException(404, 'Clip not found.')
+        # Check if it's a manually marked clip
+        manual_clips = request.app.state.store.get_manual_clips(str(project_id))
+        manual_clip = next((m for m in manual_clips if m['id'] == clip_id), None)
+        if manual_clip:
+            clip = manual_clip
+        else:
+            if result['status'] != 'completed':
+                raise HTTPException(409, 'Complete discovery before exporting clips.')
+            raise HTTPException(404, 'Clip not found.')
     
     # Generate export
     exporter = ClipExporter(request.app.state.settings.ffmpeg, request.app.state.settings.ffprobe)
@@ -402,14 +410,18 @@ async def export_batch(project_id: UUID, batch_req: BatchExportRequest, request:
 @router.post('/projects/{project_id}/clips/{clip_id}/feedback')
 def save_clip_feedback(project_id: UUID, clip_id: str, feedback: ClipFeedback, request: Request):
     """Save user feedback for a clip."""
-    project(request, project_id)
+    row = project(request, project_id)
     
     # Get discovery results to verify clip exists
     result = request.app.state.jobs.discovery.result(str(project_id))
-    if result['status'] != 'completed':
-        raise HTTPException(409, 'Complete discovery before providing feedback.')
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
     
-    clip = next((c for c in result['clips'] if c['id'] == clip_id), None)
+    # Also check manual clips
+    if not clip:
+        manual_clips = request.app.state.store.get_manual_clips(str(project_id))
+        clip = next((m for m in manual_clips if m['id'] == clip_id), None)
+    
     if not clip:
         raise HTTPException(404, 'Clip not found.')
     
@@ -423,40 +435,89 @@ def save_clip_feedback(project_id: UUID, clip_id: str, feedback: ClipFeedback, r
         if feedback.adjusted_end - feedback.adjusted_start < 1:
             raise HTTPException(422, 'Adjusted clip must be at least 1 second.')
     
+    original_start = feedback.original_start if feedback.original_start is not None else clip.get('original_start', clip.get('start'))
+    original_end = feedback.original_end if feedback.original_end is not None else clip.get('original_end', clip.get('end'))
+    scoring_factors = feedback.scoring_factors or clip.get('scoring_factors')
+    
     # Save feedback
     feedback_id = str(uuid4())
     request.app.state.store.save_feedback(
         feedback_id, str(project_id), clip_id,
-        feedback.rating, feedback.action,
-        feedback.adjusted_start, feedback.adjusted_end,
-        feedback.user_notes,
-        result.get('model'), result.get('algorithm_version')
+        rating=feedback.rating, action=feedback.action,
+        adjusted_start=feedback.adjusted_start, adjusted_end=feedback.adjusted_end,
+        user_notes=feedback.user_notes,
+        model_version=result.get('model'), algorithm_version=result.get('algorithm_version'),
+        original_start=original_start, original_end=original_end,
+        scoring_factors=scoring_factors
     )
     
     return {'feedback_id': feedback_id, 'clip_id': clip_id}
 
 
+@router.post('/projects/{project_id}/manual-clips', status_code=201)
+def create_manual_clip(project_id: UUID, manual_data: ManualClipCreate, request: Request):
+    """Mark a moment manually when ClipForge missed an interesting part."""
+    row = project(request, project_id)
+    duration = json.loads(row['metadata'])['duration']
+    if manual_data.end <= manual_data.start:
+        raise HTTPException(422, 'Clip end time must be greater than start time.')
+    if manual_data.end > duration:
+        raise HTTPException(422, f'Clip end time cannot exceed video duration ({duration:.1f}s).')
+    if manual_data.end - manual_data.start < 1.0:
+        raise HTTPException(422, 'Manual clip must be at least 1 second long.')
+    
+    clip_id = str(uuid4())[:12]
+    saved = request.app.state.store.save_manual_clip(
+        clip_id, str(project_id), manual_data.title or 'Manual Moment',
+        manual_data.start, manual_data.end, manual_data.notes
+    )
+    return saved
+
+
+@router.get('/projects/{project_id}/manual-clips')
+def get_manual_clips(project_id: UUID, request: Request):
+    """Get all manually marked moments for a project."""
+    project(request, project_id)
+    return request.app.state.store.get_manual_clips(str(project_id))
+
+
+@router.delete('/projects/{project_id}/manual-clips/{clip_id}')
+def delete_manual_clip(project_id: UUID, clip_id: str, request: Request):
+    """Delete a manually marked moment."""
+    project(request, project_id)
+    request.app.state.store.delete_manual_clip(str(project_id), clip_id)
+    return {'deleted': True, 'clip_id': clip_id}
+
+
 @router.get('/projects/{project_id}/feedback/stats')
 def get_feedback_stats(project_id: UUID, request: Request):
-    """Get evaluation metrics from user feedback."""
-    project(request, project_id)
+    """Get evaluation metrics, reference clip comparisons, and heuristic estimates."""
+    row = project(request, project_id)
     
-    # Get feedback and clips
     feedback_list = request.app.state.store.get_feedback(str(project_id))
+    manual_clips = request.app.state.store.get_manual_clips(str(project_id))
     result = request.app.state.jobs.discovery.result(str(project_id))
     
-    if result['status'] != 'completed':
-        return {'error': 'No discovery results available'}
+    duration = 0.0
+    if row.get('metadata'):
+        try:
+            duration = json.loads(row['metadata']).get('duration', 0.0)
+        except Exception:
+            pass
+            
+    category = row.get('user_category') or row.get('detected_category') or 'educational'
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
     
-    # Calculate metrics
-    metrics = EvaluationMetrics.calculate_metrics(feedback_list, result['clips'])
-    
-    # Add discovery quality metrics
-    discovery_metrics = EvaluationMetrics.calculate_discovery_quality(result)
+    user_metrics = EvaluationMetrics.calculate_metrics(feedback_list, all_clips, category=category, duration=duration)
+    discovery_metrics = EvaluationMetrics.calculate_discovery_quality(result) if result.get('status') == 'completed' else {}
+    ref_comparison = EvaluationMetrics.compare_with_reference(all_clips, manual_clips)
     
     return {
-        'user_feedback_metrics': metrics,
+        'category': category,
+        'user_feedback_metrics': user_metrics,
         'discovery_quality_metrics': discovery_metrics,
+        'reference_comparison': ref_comparison,
+        'manual_clips_count': len(manual_clips),
         'feedback_records': feedback_list
     }
 

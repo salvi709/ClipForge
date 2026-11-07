@@ -40,6 +40,17 @@ class Store:
                 rating TEXT, action TEXT, adjusted_start REAL, adjusted_end REAL,
                 user_notes TEXT, model_version TEXT, algorithm_version TEXT,
                 created_at TEXT NOT NULL, FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            feedback_cols = {row['name'] for row in db.execute('PRAGMA table_info(clip_feedback)')}
+            for name, col_type in [('original_start', 'REAL'), ('original_end', 'REAL'), ('scoring_factors', 'TEXT')]:
+                if name not in feedback_cols:
+                    db.execute(f'ALTER TABLE clip_feedback ADD COLUMN {name} {col_type}')
+
+            db.execute('''CREATE TABLE IF NOT EXISTS manual_clips (
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL, title TEXT NOT NULL,
+                start REAL NOT NULL, end REAL NOT NULL, duration REAL NOT NULL,
+                notes TEXT, created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id))''')
+
             db.execute('''CREATE TABLE IF NOT EXISTS clip_exports (
                 id TEXT PRIMARY KEY, project_id TEXT NOT NULL, clip_id TEXT NOT NULL,
                 export_path TEXT NOT NULL, strategy TEXT, duration REAL,
@@ -144,23 +155,59 @@ class Store:
 
     def save_feedback(self, feedback_id, project_id, clip_id, rating=None, action=None,
                      adjusted_start=None, adjusted_end=None, user_notes=None,
-                     model_version=None, algorithm_version=None):
+                     model_version=None, algorithm_version=None,
+                     original_start=None, original_end=None, scoring_factors=None):
         """Save user feedback for a clip."""
         from datetime import datetime, timezone
+        factors_str = json.dumps(scoring_factors) if isinstance(scoring_factors, dict) else scoring_factors
         with self.connect() as db:
             db.execute('''INSERT OR REPLACE INTO clip_feedback
                 (id, project_id, clip_id, rating, action, adjusted_start, adjusted_end,
-                 user_notes, model_version, algorithm_version, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                 user_notes, model_version, algorithm_version, created_at,
+                 original_start, original_end, scoring_factors)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (feedback_id, project_id, clip_id, rating, action, adjusted_start, adjusted_end,
-                 user_notes, model_version, algorithm_version, datetime.now(timezone.utc).isoformat()))
+                 user_notes, model_version, algorithm_version, datetime.now(timezone.utc).isoformat(),
+                 original_start, original_end, factors_str))
 
     def get_feedback(self, project_id):
         """Get all feedback for a project."""
         with self.connect() as db:
+            records = []
+            for row in db.execute('SELECT * FROM clip_feedback WHERE project_id=? ORDER BY created_at DESC', (project_id,)):
+                item = dict(row)
+                if item.get('scoring_factors') and isinstance(item['scoring_factors'], str):
+                    try:
+                        item['scoring_factors'] = json.loads(item['scoring_factors'])
+                    except Exception:
+                        pass
+                records.append(item)
+            return records
+
+    def save_manual_clip(self, clip_id, project_id, title, start, end, notes=None):
+        """Save manually marked reference/discovered clip."""
+        from datetime import datetime, timezone
+        duration = round(end - start, 3)
+        with self.connect() as db:
+            db.execute('''INSERT OR REPLACE INTO manual_clips
+                (id, project_id, title, start, end, duration, notes, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (clip_id, project_id, title, start, end, duration, notes,
+                 datetime.now(timezone.utc).isoformat()))
+            return {'id': clip_id, 'project_id': project_id, 'title': title,
+                    'start': start, 'end': end, 'duration': duration, 'notes': notes}
+
+    def get_manual_clips(self, project_id):
+        """Get all manually marked clips for a project."""
+        with self.connect() as db:
             return [dict(row) for row in db.execute(
-                'SELECT * FROM clip_feedback WHERE project_id=? ORDER BY created_at DESC',
+                'SELECT * FROM manual_clips WHERE project_id=? ORDER BY start ASC',
                 (project_id,))]
+
+    def delete_manual_clip(self, project_id, clip_id):
+        """Delete a manually marked clip."""
+        with self.connect() as db:
+            db.execute('DELETE FROM manual_clips WHERE project_id=? AND id=?', (project_id, clip_id))
 
     def save_export(self, export_id, project_id, clip_id, export_path, strategy, duration, file_size):
         """Save export record."""
@@ -182,6 +229,7 @@ class Store:
     def delete(self, project_id):
         """Called only after the owned directory has been verified absent."""
         with self.connect() as db:
+            db.execute('DELETE FROM manual_clips WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM clip_feedback WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM clip_exports WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM clip_edits WHERE project_id=?', (project_id,))

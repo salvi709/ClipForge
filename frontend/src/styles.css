@@ -1184,3 +1184,207 @@ button:active:not(:disabled) { transform: translateY(1px); }
 .confidence-heading { grid-column: 1 / -1; color: #b4bec9; }
 .confidence-heading h3 { font-size: 15px; }
 .confidence-heading p { font-size: 11px; line-height: 1.8; margin-top: 8px; }
+
+/* Discovery Intelligence V2 Styles */
+.discovery-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 24px 0 12px;
+  grid-column: 1 / -1;
+  border-bottom: 1px solid #2a2d30;
+  padding-bottom: 8px;
+}
+.discovery-section-header h3 {
+  font: 16px "Space Grotesk", sans-serif;
+  color: #f2f3f0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.discovery-section-header p {
+  font-size: 11px;
+  color: #92979e;
+}
+.more-discoveries-toggle {
+  background: #25282c;
+  color: #d1d8d5;
+  border: 1px solid #3a3f45;
+  border-radius: 6px;
+  padding: 10px 16px;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-top: 20px;
+  grid-column: 1 / -1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.more-discoveries-toggle:hover {
+  background: #2a2e33;
+  border-color: #58b6a0;
+}
+.clip-feedback-controls {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #2a2d30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feedback-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.feedback-label {
+  font-size: 10px;
+  color: #8c9aa9;
+  font-family: "JetBrains Mono", monospace;
+  min-width: 55px;
+}
+.feedback-btn {
+  background: #202327;
+  color: #a5aab0;
+  border: 1px solid #35393f;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.feedback-btn:hover {
+  background: #2a2e33;
+  color: #f2f3f0;
+  border-color: #4f555e;
+}
+.feedback-btn.rating-btn.active {
+  background: #2c3828;
+  color: #c7f36b;
+  border-color: #c7f36b;
+  font-weight: 500;
+}
+.feedback-btn.action-btn.accept.active {
+  background: #1e362d;
+  color: #58b6a0;
+  border-color: #58b6a0;
+  font-weight: 500;
+}
+.feedback-btn.action-btn.reject.active {
+  background: #3d2325;
+  color: #f87171;
+  border-color: #f87171;
+  font-weight: 500;
+}
+.feedback-status-badge {
+  font-size: 10px;
+  color: #58b6a0;
+  font-family: "JetBrains Mono", monospace;
+  margin-left: auto;
+}
+.manual-moments-card {
+  border: 1px dashed #3a3f45;
+  border-radius: 6px;
+  padding: 16px;
+  margin-top: 24px;
+  background: #15171a;
+  grid-column: 1 / -1;
+}
+.manual-moments-card h4 {
+  font: 14px "Space Grotesk", sans-serif;
+  color: #d1d8d5;
+  margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.manual-moment-form {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-top: 12px;
+}
+.manual-moment-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  color: #8c9aa9;
+}
+.manual-moment-form input {
+  background: #25282c;
+  color: #f2f3f0;
+  border: 1px solid #41454b;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.manual-clips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.manual-clip-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #1c1f23;
+  border: 1px solid #2e3237;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+.evaluation-drawer {
+  border: 1px solid #2e333a;
+  border-radius: 6px;
+  background: #181b1e;
+  padding: 16px;
+  margin: 20px 0;
+  grid-column: 1 / -1;
+}
+.evaluation-drawer summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: #d1d8d5;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.metric-box {
+  background: #202327;
+  border: 1px solid #30353c;
+  border-radius: 4px;
+  padding: 10px 12px;
+}
+.metric-box .metric-label {
+  font-size: 10px;
+  color: #8c9aa9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.metric-box .metric-value {
+  font: 18px "JetBrains Mono", monospace;
+  color: #c7f36b;
+  margin-top: 4px;
+}
+.metric-disclaimer {
+  font-size: 10px;
+  color: #7b828a;
+  margin-top: 12px;
+  line-height: 1.6;
+}
