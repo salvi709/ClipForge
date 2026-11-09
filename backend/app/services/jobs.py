@@ -235,18 +235,23 @@ class Jobs:
             audio_analysis, scene_analysis = {}, {}
             try:
                 with measure(timings, 'audio_analysis', project_id):
-                    audio_analysis = self.audio_analyzer.analyze(source, metadata['duration'])
-                    logger.info('Audio analysis: %d speech regions, %d silence periods',
+                    # Pass the extracted audio file for energy analysis
+                    audio_analysis = self.audio_analyzer.analyze(source, metadata['duration'], audio_path=audio)
+                    logger.info('Audio analysis: %d speech regions, %d silence periods, %d volume peaks',
                               len(audio_analysis.get('speech_regions', [])),
-                              len(audio_analysis.get('silence_periods', [])))
+                              len(audio_analysis.get('silence_periods', [])),
+                              len(audio_analysis.get('volume_peaks', [])))
             except Exception:
                 logger.warning('Audio analysis failed for project %s', project_id, exc_info=True)
             
             try:
                 with measure(timings, 'scene_analysis', project_id):
-                    scene_analysis = self.scene_analyzer.analyze(source, metadata['duration'])
-                    logger.info('Scene analysis: %d scene changes detected',
-                              len(scene_analysis.get('scene_changes', [])))
+                    # Pass project folder for frame storage
+                    project_folder = source.parent
+                    scene_analysis = self.scene_analyzer.analyze(source, metadata['duration'], project_folder=project_folder)
+                    logger.info('Scene analysis: %d scene changes detected, %d frames extracted',
+                              len(scene_analysis.get('scene_changes', [])),
+                              len(scene_analysis.get('representative_frames', [])))
             except Exception:
                 logger.warning('Scene analysis failed for project %s', project_id, exc_info=True)
             

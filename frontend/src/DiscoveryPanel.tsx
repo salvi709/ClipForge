@@ -839,6 +839,99 @@ function ClipCard({
         </div>
       </div>
 
+      {/* Multimodal Evidence Summary */}
+      {clip.scoring_factors && (
+        <details className="evidence-summary">
+          <summary className="evidence-summary-header">
+            <Sparkles size={14} /> Multimodal Evidence Factors
+          </summary>
+          <div className="evidence-grid">
+            <div className="evidence-section">
+              <h5>Core Criteria</h5>
+              <div className="factor-row">
+                <span>Hook Strength</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.hook_strength}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.hook_strength.toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span>Informational Value</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.informational_value}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.informational_value.toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span>Context Completeness</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.context_completeness}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.context_completeness.toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span>Clarity</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.clarity}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.clarity.toFixed(0)}</span>
+              </div>
+            </div>
+            <div className="evidence-section">
+              <h5>Audio & Visual Signals</h5>
+              <div className="factor-row">
+                <span title="Speech clarity and audio quality">🔊 Audio Relevance</span>
+                <div className="factor-bar">
+                  <div className="factor-fill audio" style={{ width: `${clip.scoring_factors.audio_relevance || 80}%` }}></div>
+                </div>
+                <span className="factor-value">{(clip.scoring_factors.audio_relevance || 80).toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span title="Scene composition and visual interest">🎬 Visual Relevance</span>
+                <div className="factor-bar">
+                  <div className="factor-fill visual" style={{ width: `${clip.scoring_factors.visual_relevance || 75}%` }}></div>
+                </div>
+                <span className="factor-value">{(clip.scoring_factors.visual_relevance || 75).toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span title="Clean beginning and ending points">✂️ Boundary Quality</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.boundary_quality}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.boundary_quality.toFixed(0)}</span>
+              </div>
+            </div>
+            <div className="evidence-section">
+              <h5>Quality Indicators</h5>
+              <div className="factor-row">
+                <span>Standalone Usefulness</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.standalone_usefulness}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.standalone_usefulness.toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span>Evidence Strength</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.evidence_strength}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.evidence_strength.toFixed(0)}</span>
+              </div>
+              <div className="factor-row">
+                <span>Content Uniqueness</span>
+                <div className="factor-bar">
+                  <div className="factor-fill" style={{ width: `${clip.scoring_factors.uniqueness}%` }}></div>
+                </div>
+                <span className="factor-value">{clip.scoring_factors.uniqueness.toFixed(0)}</span>
+              </div>
+            </div>
+          </div>
+          <div className="evidence-note">
+            <small>These factors combine to produce the composite score. Audio and visual signals are detected from the video's audio track and scene changes.</small>
+          </div>
+        </details>
+      )}
+
       {selected && (
         <div className="clip-details">
           <p className="clip-excerpt">{clip.excerpt}</p>

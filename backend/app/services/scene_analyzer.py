@@ -1,15 +1,24 @@
 """
-Scene boundary detection using FFmpeg for visual-based candidate generation.
-Detects scene changes and visual transitions without heavyweight models.
+Scene boundary detection using FFmpeg and OpenCV for visual-based candidate generation.
+Detects scene changes, extracts representative frames, and analyzes motion.
 """
 import json
 import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
+
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    logger.warning('OpenCV not available - frame extraction and motion analysis will be disabled')
 
 
 class SceneAnalyzer:
@@ -18,9 +27,14 @@ class SceneAnalyzer:
     def __init__(self, ffmpeg_command='ffmpeg'):
         self.ffmpeg = ffmpeg_command
     
-    def analyze(self, video_path: Path, duration: float) -> Dict:
+    def analyze(self, video_path: Path, duration: float, project_folder: Optional[Path] = None) -> Dict:
         """
         Analyze video for scene changes and visual characteristics.
+        
+        Args:
+            video_path: Path to video file
+            duration: Video duration in seconds
+            project_folder: Optional project folder for storing frames
         
         Returns:
             Dictionary with detected scenes and visual characteristics
@@ -28,6 +42,8 @@ class SceneAnalyzer:
         results = {
             'scene_changes': [],
             'scene_count': 0,
+            'representative_frames': [],
+            'motion_analysis': {},
             'characteristics': {}
         }
         
@@ -37,22 +53,47 @@ class SceneAnalyzer:
             results['scene_changes'] = scene_changes
             results['scene_count'] = len(scene_changes) + 1  # +1 for first scene
             
+            # Extract representative frames and analyze motion if OpenCV available
+            if CV2_AVAILABLE and project_folder:
+                frames_data = self._extract_representative_frames(video_path, scene_changes, duration, project_folder)
+                results['representative_frames'] = frames_data['frames']
+                results['motion_analysis'] = frames_data['motion']
+            
             # Calculate characteristics
             if scene_changes:
                 avg_scene_duration = duration / (len(scene_changes) + 1)
+                scene_change_rate = len(scene_changes) / duration if duration > 0 else 0
+                
+                # Classify visual complexity based on scene change rate
+                if scene_change_rate > 0.2:
+                    complexity = 'high'
+                elif scene_change_rate > 0.05:
+                    complexity = 'medium'
+                else:
+                    complexity = 'low'
+                
+                # Add motion-based complexity adjustment
+                if results['motion_analysis']:
+                    avg_motion = results['motion_analysis'].get('avg_motion_magnitude', 0)
+                    if avg_motion > 15:
+                        complexity = 'high' if complexity != 'high' else 'very_high'
+                
                 results['characteristics'] = {
                     'avg_scene_duration': avg_scene_duration,
-                    'scene_change_rate': len(scene_changes) / duration if duration > 0 else 0,
-                    'visual_complexity': 'high' if len(scene_changes) / duration > 0.2 else 'medium' if len(scene_changes) / duration > 0.05 else 'low'
+                    'scene_change_rate': scene_change_rate,
+                    'visual_complexity': complexity,
+                    'motion_level': results['motion_analysis'].get('motion_level', 'unknown')
                 }
             else:
                 results['characteristics'] = {
                     'avg_scene_duration': duration,
                     'scene_change_rate': 0,
-                    'visual_complexity': 'static'
+                    'visual_complexity': 'static',
+                    'motion_level': 'static'
                 }
             
-            logger.info('Scene analysis complete: %d scene changes detected', len(scene_changes))
+            logger.info('Scene analysis complete: %d scene changes, %d frames extracted',
+                       len(scene_changes), len(results['representative_frames']))
             
         except Exception as e:
             logger.warning('Scene analysis failed: %s', e, exc_info=True)
@@ -117,6 +158,155 @@ class SceneAnalyzer:
         except Exception as e:
             logger.warning('Scene detection failed: %s', e)
             return []
+    
+    def _extract_representative_frames(self, video_path: Path, scene_changes: List[Dict], 
+                                      duration: float, project_folder: Path) -> Dict:
+        """
+        Extract representative frames at scene boundaries and analyze motion.
+        
+        Args:
+            video_path: Path to video file
+            scene_changes: List of detected scene changes
+            duration: Video duration
+            project_folder: Folder to save frames
+        
+        Returns:
+            Dictionary with frame paths and motion analysis
+        """
+        frames_data = {
+            'frames': [],
+            'motion': {}
+        }
+        
+        try:
+            # Create frames subdirectory
+            frames_dir = project_folder / 'frames'
+            frames_dir.mkdir(exist_ok=True)
+            
+            # Open video
+            cap = cv2.VideoCapture(str(video_path))
+            if not cap.isOpened():
+                logger.warning('Could not open video for frame extraction')
+                return frames_data
+            
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            # Timestamps to extract: scene changes + start + end + midpoints
+            extract_timestamps = [0]  # Start
+            
+            if scene_changes:
+                extract_timestamps.extend([sc['timestamp'] for sc in scene_changes])
+            
+            extract_timestamps.append(duration)  # End
+            
+            # Add midpoints between major scenes (max 10 total frames)
+            if len(extract_timestamps) < 10:
+                sorted_ts = sorted(extract_timestamps)
+                for i in range(len(sorted_ts) - 1):
+                    if len(extract_timestamps) >= 10:
+                        break
+                    midpoint = (sorted_ts[i] + sorted_ts[i + 1]) / 2
+                    if midpoint not in extract_timestamps:
+                        extract_timestamps.append(midpoint)
+            
+            extract_timestamps = sorted(set(extract_timestamps))[:10]  # Limit to 10 frames
+            
+            # Extract frames and compute motion
+            prev_frame = None
+            motion_magnitudes = []
+            
+            for idx, timestamp in enumerate(extract_timestamps):
+                frame_number = int(timestamp * fps)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+                ret, frame = cap.read()
+                
+                if not ret:
+                    continue
+                
+                # Save frame
+                frame_filename = f'frame_{idx:03d}_t{timestamp:.1f}s.jpg'
+                frame_path = frames_dir / frame_filename
+                cv2.imwrite(str(frame_path), frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                
+                # Compute motion if we have a previous frame
+                if prev_frame is not None:
+                    motion_mag = self._compute_motion_magnitude(prev_frame, frame)
+                    motion_magnitudes.append(motion_mag)
+                
+                frames_data['frames'].append({
+                    'timestamp': timestamp,
+                    'path': str(frame_path.relative_to(project_folder)),
+                    'frame_number': frame_number
+                })
+                
+                prev_frame = frame.copy()
+            
+            cap.release()
+            
+            # Motion analysis summary
+            if motion_magnitudes:
+                avg_motion = float(np.mean(motion_magnitudes))
+                max_motion = float(np.max(motion_magnitudes))
+                
+                # Classify motion level
+                if avg_motion > 15:
+                    motion_level = 'high'
+                elif avg_motion > 8:
+                    motion_level = 'medium'
+                elif avg_motion > 3:
+                    motion_level = 'low'
+                else:
+                    motion_level = 'static'
+                
+                frames_data['motion'] = {
+                    'avg_motion_magnitude': avg_motion,
+                    'max_motion_magnitude': max_motion,
+                    'motion_level': motion_level,
+                    'sample_count': len(motion_magnitudes)
+                }
+            
+            logger.info('Extracted %d frames, avg motion: %.2f', 
+                       len(frames_data['frames']),
+                       frames_data['motion'].get('avg_motion_magnitude', 0))
+            
+        except Exception as e:
+            logger.warning('Frame extraction failed: %s', e)
+        
+        return frames_data
+    
+    def _compute_motion_magnitude(self, frame1: np.ndarray, frame2: np.ndarray) -> float:
+        """
+        Compute motion magnitude between two frames using optical flow.
+        
+        Args:
+            frame1: First frame (BGR)
+            frame2: Second frame (BGR)
+        
+        Returns:
+            Average motion magnitude
+        """
+        try:
+            # Convert to grayscale
+            gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+            gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+            
+            # Compute dense optical flow
+            flow = cv2.calcOpticalFlowFarneback(
+                gray1, gray2, None,
+                pyr_scale=0.5, levels=3, winsize=15,
+                iterations=3, poly_n=5, poly_sigma=1.2, flags=0
+            )
+            
+            # Calculate magnitude of flow
+            mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+            
+            # Average magnitude
+            return float(np.mean(mag))
+            
+        except Exception as e:
+            logger.warning('Motion computation failed: %s', e)
+            return 0.0
     
     def generate_candidates_from_scenes(self, scene_analysis: Dict, duration: float, 
                                        min_duration: float, max_duration: float) -> List[Tuple[float, float]]:

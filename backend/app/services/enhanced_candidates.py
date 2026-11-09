@@ -164,7 +164,7 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
 
         current_time += step
 
-    # Source 3: Audio event integration (speech regions & volume peaks)
+    # Source 3: Audio event integration (speech regions, volume peaks & energy)
     if audio_analysis and audio_analysis.get('speech_regions'):
         for region in audio_analysis['speech_regions']:
             check_cancel(cancel)
@@ -180,6 +180,11 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
                     if len(excerpt.split()) >= 18:
                         key = (round(s_start, 3), round(s_end, 3))
                         if key not in all_windows:
+                            # Check if this region contains volume peaks
+                            volume_peaks = audio_analysis.get('volume_peaks', [])
+                            has_peak = any(s_start <= peak['timestamp'] <= s_end for peak in volume_peaks)
+                            audio_score = 95.0 if has_peak else 92.0
+                            
                             all_windows[key] = {
                                 'id': hashlib.sha256(f'{key[0]}:{key[1]}'.encode()).hexdigest()[:12],
                                 'start': key[0],
@@ -190,12 +195,15 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
                                 'duration_exception': False,
                                 'has_uncertain_speech': False,
                                 'source': 'audio_event',
-                                'audio_score': 92.0,
+                                'audio_score': audio_score,
                                 'visual_score': 75.0,
-                                '_priority': 2,
+                                'has_volume_peak': has_peak,
+                                '_priority': 3 if has_peak else 2,
                             }
 
-    # Source 4: Visual scene change integration
+    # Source 4: Visual scene change integration + audio energy boost
+    volume_peaks = audio_analysis.get('volume_peaks', []) if audio_analysis else []
+    
     if scene_analysis and scene_analysis.get('scene_changes'):
         scene_timestamps = [sc['timestamp'] for sc in scene_analysis['scene_changes']]
         for sc_time in scene_timestamps:
@@ -204,6 +212,14 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
                 if abs(cand['start'] - sc_time) < 1.5 or abs(cand['end'] - sc_time) < 1.5:
                     cand['visual_score'] = 90.0
                     cand['scene_aligned'] = True
+    
+    # Boost audio scores for candidates with volume peaks
+    for key, cand in all_windows.items():
+        if volume_peaks:
+            peak_in_range = any(cand['start'] <= peak['timestamp'] <= cand['end'] for peak in volume_peaks)
+            if peak_in_range and 'has_volume_peak' not in cand:
+                cand['audio_score'] = min(95.0, cand.get('audio_score', 80.0) + 10.0)
+                cand['has_volume_peak'] = True
 
     candidates = list(all_windows.values())
     if not candidates:
