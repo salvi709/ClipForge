@@ -220,13 +220,13 @@ class Jobs:
             # Generate content profile after transcription
             try:
                 with measure(timings, 'content_profiling', project_id):
-                    profile = self.profiler.profile(result, metadata)
+                    profile = self.profiler.profile(result, metadata, audio_analysis, scene_analysis)
                     self.store.update(project_id, 
                                     content_profile=profile.to_dict(),
                                     detected_category=profile.primary_category,
                                     category_confidence=str(round(profile.confidence, 3)))
-                    logger.info('Content profile saved: %s (%.2f confidence)', 
-                              profile.primary_category, profile.confidence)
+                    logger.info('Content profile saved: %s (%.2f confidence) - %s', 
+                              profile.primary_category, profile.confidence, profile.detection_explanation)
             except Exception:
                 # Content profiling failure should not block transcription completion
                 logger.warning('Content profiling failed for project %s', project_id, exc_info=True)

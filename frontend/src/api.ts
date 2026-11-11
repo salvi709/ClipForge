@@ -7,6 +7,37 @@ export type Status =
   | "failed"
   | "deleting"
   | "deletion_failed";
+
+export type ContentCategory = 
+  | 'educational' | 'podcast' | 'gaming' | 'vlog' 
+  | 'travel' | 'cinematic' | 'sports' | 'comedy' 
+  | 'documentary' | 'music' | 'mixed' | 'generic' | 'minimal_speech';
+
+export type ContentProfile = {
+  duration: number;
+  word_count: number;
+  speech_density: number;
+  has_meaningful_speech: boolean;
+  category_scores: Record<string, number>;
+  primary_category: ContentCategory;
+  secondary_category?: ContentCategory;
+  confidence: number;
+  characteristics: {
+    question_count: number;
+    question_density: number;
+    conversational_markers: number;
+    excitement_markers: number;
+    technical_terms: number;
+    vocabulary_diversity: number;
+    volume_peak_count?: number;
+    average_motion?: number;
+  };
+  is_mixed_content: boolean;
+  detection_notes: string[];
+  detection_explanation?: string;
+  supporting_evidence?: string[];
+};
+
 export type Project = {
   id: string;
   filename: string;
@@ -24,6 +55,10 @@ export type Project = {
     height: number;
     codec: string;
   } | null;
+  detected_category?: ContentCategory;
+  user_category?: ContentCategory;
+  category_confidence?: string;
+  content_profile?: ContentProfile;
 };
 export type Segment = {
   id: number;
@@ -338,4 +373,13 @@ export async function getFeedbackStats(projectId: string): Promise<FeedbackStats
   } catch {
     return null;
   }
+}
+
+
+export async function updateCategory(projectId: string, category: ContentCategory): Promise<Project> {
+  return api<Project>(`/projects/${projectId}/category`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category }),
+  });
 }

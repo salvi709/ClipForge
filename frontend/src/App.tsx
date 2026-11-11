@@ -29,6 +29,7 @@ import {
 } from "./api";
 import DiscoveryPanel from "./DiscoveryPanel";
 import DeleteProjectDialog from "./DeleteProjectDialog";
+import { CategoryDisplay } from "./CategoryDisplay";
 import { useClipPreview } from "./useClipPreview";
 
 const labels = {
@@ -777,6 +778,20 @@ export default function App() {
               )}
             </section>
           </div>
+          {project && project.status === "completed" && (
+            <CategoryDisplay
+              projectId={project.id}
+              detectedCategory={project.detected_category}
+              userCategory={project.user_category}
+              confidence={project.category_confidence ? parseFloat(project.category_confidence) : undefined}
+              contentProfile={project.content_profile}
+              onCategoryChange={async () => {
+                // Refresh project list to get updated category
+                const nextProjects = await api<Project[]>("/projects");
+                setProjects(nextProjects);
+              }}
+            />
+          )}
           {project && (
             <DiscoveryPanel
               key={`${project.id}:${project.status}`}
