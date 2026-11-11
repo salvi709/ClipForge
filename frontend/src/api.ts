@@ -378,7 +378,7 @@ export async function getFeedbackStats(projectId: string): Promise<FeedbackStats
 
 export async function updateCategory(projectId: string, category: ContentCategory): Promise<Project> {
   return api<Project>(`/projects/${projectId}/category`, {
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ category }),
   });

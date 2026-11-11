@@ -62,11 +62,17 @@ export function CategoryDisplay({
   }
 
   const activeCategory = userCategory || detectedCategory || 'generic';
-  const confidenceValue = contentProfile?.confidence ?? (confidence ? parseFloat(String(confidence)) : 0);
+  const confidenceValue = contentProfile?.confidence ?? (confidence ? parseFloat(String(confidence)) : undefined);
   const isUserOverride = !!userCategory && userCategory !== detectedCategory;
 
   const confidenceLevel =
-    confidenceValue >= 0.7 ? 'high' : confidenceValue >= 0.4 ? 'medium' : 'low';
+    confidenceValue === undefined || confidenceValue === 0
+      ? 'low'
+      : confidenceValue >= 0.7
+        ? 'high'
+        : confidenceValue >= 0.4
+          ? 'medium'
+          : 'low';
 
   const handleSaveCategory = async () => {
     if (!selectedCategory) return;
@@ -98,13 +104,17 @@ export function CategoryDisplay({
             )}
           </div>
           <div className="confidence-indicator">
-            <span>{Math.round(confidenceValue * 100)}%</span>
-            <div className="confidence-bar">
-              <div
-                className={`confidence-fill ${confidenceLevel}`}
-                style={{ width: `${confidenceValue * 100}%` }}
-              />
-            </div>
+            <span>
+              {confidenceValue !== undefined ? `${Math.round(confidenceValue * 100)}%` : 'N/A'}
+            </span>
+            {confidenceValue !== undefined && (
+              <div className="confidence-bar">
+                <div
+                  className={`confidence-fill ${confidenceLevel}`}
+                  style={{ width: `${confidenceValue * 100}%` }}
+                />
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -131,8 +141,8 @@ export function CategoryDisplay({
 
       {isUserOverride && (
         <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>
-          Originally detected as: {CATEGORY_LABELS[detectedCategory || 'generic']} (
-          {Math.round(confidenceValue * 100)}%)
+          Originally detected as: {CATEGORY_LABELS[detectedCategory || 'generic']}
+          {confidenceValue !== undefined && ` (${Math.round(confidenceValue * 100)}%)`}
         </div>
       )}
 

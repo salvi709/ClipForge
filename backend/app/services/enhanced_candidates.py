@@ -57,15 +57,28 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
     # Source 1: Transcript-based sliding windows starting at every sentence
     for index, first in enumerate(units):
         check_cancel(cancel)
+        
+        # Skip starting from uncertain units, but allow them to be included in windows
+        if first.get('uncertain'):
+            continue
+            
         selected = []
         remaining_targets = list(targets)
         has_uncertain = False
         matching_spans = []
+        uncertain_unit_count = 0
 
         for unit in units[index:]:
             # Gap detection: pause > 3.0s between units suggests a scene or topic boundary
             if selected and unit['start'] - selected[-1]['end'] > 3.0:
                 break
+
+            # Track uncertain units within this window
+            if unit.get('uncertain'):
+                uncertain_unit_count += 1
+                # Allow up to 30% uncertain content
+                if uncertain_unit_count / (len(selected) + 1) > 0.3:
+                    break
 
             # Check for uncertain speech spans overlapping this window
             for span in uncertain_ranges:
@@ -84,10 +97,16 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
             is_complete = bool(unit.get('complete', False))
 
             if at_target or next_topic or unit == units[-1] or (is_complete and length >= min_dur):
-                excerpt = ' '.join(item['text'] for item in selected).strip()
+                # Build excerpt, excluding uncertain unit text from transcript evidence
+                excerpt_parts = []
+                for u in selected:
+                    if not u.get('uncertain'):
+                        excerpt_parts.append(u['text'])
+                excerpt = ' '.join(excerpt_parts).strip()
                 word_count = len(excerpt.split())
 
-                if min_dur <= length <= max_dur and word_count >= 18:
+                # Require minimum non-uncertain words, but allow candidates with some uncertain content
+                if min_dur <= length <= max_dur and word_count >= 12:
                     key = (round(first['start'], 3), round(unit['end'], 3))
                     priority = _calculate_candidate_priority(first, unit, selected, excerpt, topic_starts, has_uncertain)
                     all_windows[key] = {
@@ -98,8 +117,9 @@ def build_enhanced_candidates(transcript: Dict, duration: float, settings,
                         'excerpt': excerpt,
                         'sentence_ids': [s['id'] for s in selected],
                         'duration_exception': False,
-                        'has_uncertain_speech': has_uncertain,
+                        'has_uncertain_speech': has_uncertain or uncertain_unit_count > 0,
                         'uncertain_spans': matching_spans,
+                        'uncertain_unit_count': uncertain_unit_count,
                         'source': 'transcript',
                         'audio_score': 85.0 if not has_uncertain else 70.0,
                         'visual_score': 75.0,
