@@ -33,6 +33,7 @@ import {
   deleteManualClip,
   getFeedbackStats,
 } from "./api";
+import ClipEnhancementPanel from "./ClipEnhancementPanel";
 
 const stages: Record<string, string> = {
   queued: "Waiting for local engine",
@@ -652,6 +653,9 @@ function ClipCard({
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   
+  // Enhancement panel state
+  const [showEnhancement, setShowEnhancement] = useState(false);
+  
   useEffect(() => {
     setStart(String(clip.start));
     setEnd(String(clip.end));
@@ -792,6 +796,13 @@ function ClipCard({
           ) : (
             <><Download size={14} /> Download MP4</>
           )}
+        </button>
+        <button 
+          className="secondary"
+          onClick={() => setShowEnhancement(!showEnhancement)}
+          title="Get AI recommendations for social media"
+        >
+          <Sparkles size={14} /> {showEnhancement ? "Hide" : "Enhance"}
         </button>
         <button className="text-button" onClick={onSelect}>
           Transcript & timing
@@ -988,6 +999,14 @@ function ClipCard({
             </p>
           )}
         </div>
+      )}
+
+      {showEnhancement && (
+        <ClipEnhancementPanel
+          projectId={projectId}
+          clipId={clip.id}
+          onClose={() => setShowEnhancement(false)}
+        />
       )}
     </article>
   );

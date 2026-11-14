@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from uuid import UUID, uuid4
 from typing import Literal
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -521,3 +522,218 @@ def get_feedback_stats(project_id: UUID, request: Request):
         'feedback_records': feedback_list
     }
 
+
+
+
+@router.post('/projects/{project_id}/clips/{clip_id}/enhance', status_code=200)
+async def enhance_clip(project_id: UUID, clip_id: str, request: Request):
+    """Generate AI-powered enhancement recommendations for a clip."""
+    from ..services.clip_enhancer import ClipEnhancer
+    from ..models.enhancement import ClipEnhancement
+    from uuid import uuid4
+    
+    row = project(request, project_id)
+    
+    # Get clip data
+    result = request.app.state.jobs.discovery.result(str(project_id))
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
+    
+    if not clip:
+        raise HTTPException(404, 'Clip not found.')
+    
+    # Check for cached enhancement
+    cached = request.app.state.store.get_enhancement(str(project_id), clip_id)
+    enhancer = ClipEnhancer(request.app.state.jobs.discovery.ollama)
+    fingerprint = enhancer.generate_enhancement_fingerprint(clip)
+    
+    if cached and cached.get('fingerprint') == fingerprint:
+        # Return cached recommendations
+        return cached['enhancement_json']
+    
+    # Generate new recommendations
+    try:
+        # Get category
+        category = row.get('user_category') or row.get('detected_category') or 'generic'
+        
+        # Get video metadata
+        metadata = json.loads(row['metadata'])
+        
+        # Get transcript
+        transcript_path = Path(row['transcript_path'])
+        transcript = json.loads(transcript_path.read_text(encoding='utf-8'))
+        
+        # Get audio/visual analysis if available
+        project_dir = transcript_path.parent
+        audio_path = project_dir / 'audio_analysis.json'
+        visual_path = project_dir / 'scene_analysis.json'
+        
+        audio_analysis = None
+        visual_analysis = None
+        
+        try:
+            if audio_path.exists():
+                audio_analysis = json.loads(audio_path.read_text())
+        except:
+            pass
+        
+        try:
+            if visual_path.exists():
+                visual_analysis = json.loads(visual_path.read_text())
+        except:
+            pass
+        
+        # Generate all recommendations
+        titles = await run_in_threadpool(
+            enhancer.generate_titles,
+            clip, category, clip.get('excerpt', '')
+        )
+        
+        caption_style = enhancer.recommend_caption_style(
+            clip, category, clip.get('has_uncertain_speech', False)
+        )
+        
+        format_rec = enhancer.recommend_format(clip, metadata, category)
+        
+        editing_ideas = enhancer.suggest_editing_ideas(
+            clip, category, audio_analysis, visual_analysis
+        )
+        
+        music_rec = enhancer.suggest_music_mood(clip, category, audio_analysis)
+        
+        export_presets = enhancer.create_export_presets(clip, metadata, format_rec['recommended_format'])
+        
+        # Build enhancement response
+        enhancement = {
+            'clip_id': clip_id,
+            'fingerprint': fingerprint,
+            'titles': titles,
+            'caption_style': caption_style,
+            'format_recommendation': format_rec,
+            'editing_ideas': editing_ideas,
+            'music_recommendation': music_rec,
+            'export_presets': export_presets,
+            'generated_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Cache the enhancement
+        enhancement_id = str(uuid4())
+        request.app.state.store.save_enhancement(
+            enhancement_id, str(project_id), clip_id, fingerprint, enhancement
+        )
+        
+        return enhancement
+        
+    except Exception as error:
+        logger.exception('Enhancement generation failed for clip %s', clip_id)
+        raise HTTPException(500, f'Could not generate enhancements: {str(error)}') from None
+
+
+@router.get('/projects/{project_id}/clips/{clip_id}/enhancements')
+def get_clip_enhancements(project_id: UUID, clip_id: str, request: Request):
+    """Retrieve cached enhancement recommendations."""
+    project(request, project_id)
+    
+    cached = request.app.state.store.get_enhancement(str(project_id), clip_id)
+    if not cached:
+        raise HTTPException(404, 'No enhancements found. Generate them first.')
+    
+    return cached['enhancement_json']
+
+
+@router.post('/projects/{project_id}/clips/{clip_id}/enhancements/titles/regenerate')
+async def regenerate_titles(project_id: UUID, clip_id: str, request: Request):
+    """Regenerate title options with potentially different parameters."""
+    from ..services.clip_enhancer import ClipEnhancer
+    
+    row = project(request, project_id)
+    
+    # Get clip
+    result = request.app.state.jobs.discovery.result(str(project_id))
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
+    
+    if not clip:
+        raise HTTPException(404, 'Clip not found.')
+    
+    category = row.get('user_category') or row.get('detected_category') or 'generic'
+    
+    enhancer = ClipEnhancer(request.app.state.jobs.discovery.ollama)
+    
+    try:
+        titles = await run_in_threadpool(
+            enhancer.generate_titles,
+            clip, category, clip.get('excerpt', '')
+        )
+        return {'titles': titles}
+    except Exception as error:
+        logger.exception('Title regeneration failed')
+        raise HTTPException(500, f'Could not regenerate titles: {str(error)}') from None
+
+
+@router.post('/projects/{project_id}/clips/{clip_id}/captions/export')
+def export_captions(project_id: UUID, clip_id: str, request: Request):
+    """Export clip captions in SRT, VTT or JSON format."""
+    from ..services.sentences import excerpt_for_range
+    
+    row = project(request, project_id)
+    
+    # Get clip
+    result = request.app.state.jobs.discovery.result(str(project_id))
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
+    
+    if not clip:
+        raise HTTPException(404, 'Clip not found.')
+    
+    # Get transcript
+    transcript_path = Path(row['transcript_path'])
+    transcript = json.loads(transcript_path.read_text(encoding='utf-8'))
+    
+    # Build caption data from transcript
+    captions = []
+    index = 1
+    
+    for segment in transcript.get('segments', []):
+        if segment['end'] <= clip['start'] or segment['start'] >= clip['end']:
+            continue
+        
+        # Adjust timing relative to clip start
+        start_time = max(0, segment['start'] - clip['start'])
+        end_time = min(clip['duration'], segment['end'] - clip['start'])
+        
+        if segment.get('uncertain_reason'):
+            text = '[uncertain speech]'
+        else:
+            text = segment['text']
+        
+        captions.append({
+            'index': index,
+            'start': start_time,
+            'end': end_time,
+            'text': text
+        })
+        index += 1
+    
+    # Return SRT format by default
+    srt_output = []
+    for cap in captions:
+        srt_output.append(f"{cap['index']}")
+        srt_output.append(f"{_format_srt_time(cap['start'])} --> {_format_srt_time(cap['end'])}")
+        srt_output.append(cap['text'])
+        srt_output.append('')  # Blank line
+    
+    return {
+        'format': 'srt',
+        'content': '\n'.join(srt_output),
+        'caption_count': len(captions)
+    }
+
+
+def _format_srt_time(seconds: float) -> str:
+    """Format seconds to SRT timestamp format (HH:MM:SS,mmm)."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"

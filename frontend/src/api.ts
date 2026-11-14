@@ -383,3 +383,114 @@ export async function updateCategory(projectId: string, category: ContentCategor
     body: JSON.stringify({ category }),
   });
 }
+
+
+// Smart Enhancement Types
+export type TitleOption = {
+  text: string;
+  hook_type: string;
+  reasoning: string;
+};
+
+export type CaptionStyleRecommendation = {
+  style: string;
+  max_chars_per_line: number;
+  line_count: number;
+  highlight_keywords: boolean;
+  animation: string;
+  position: string;
+  font_weight: string;
+  color_scheme: string;
+  reasoning: string;
+  uncertain_marker?: string;
+  show_uncertainty_warning: boolean;
+};
+
+export type CropSuggestion = {
+  type: 'none' | 'center' | 'subject_tracking' | 'manual';
+  confidence: number;
+  position: { x: number; y: number };
+  note: string;
+};
+
+export type FormatRecommendation = {
+  recommended_format: '9:16' | '16:9' | '1:1';
+  original_aspect_ratio: string;
+  crop_suggestion: CropSuggestion;
+  reasoning: string;
+  platforms: string[];
+};
+
+export type EditingIdea = {
+  type: string;
+  suggestion: string;
+  reasoning: string;
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  timestamps?: number[];
+};
+
+export type SoundEffectIdea = {
+  type: string;
+  timing: string;
+  reasoning: string;
+  timestamp?: number;
+};
+
+export type MusicRecommendation = {
+  music_mood: string;
+  volume_level: string;
+  volume_note: string;
+  speech_density: number;
+  silence_moments: Array<{ start: number; end: number }>;
+  sound_effect_ideas: SoundEffectIdea[];
+  licensing_note: string;
+  application_note: string;
+};
+
+export type ExportPreset = {
+  platform: string;
+  aspect_ratio: string;
+  resolution: { width: number; height: number };
+  frame_rate: number;
+  format: string;
+  codec: string;
+  audio_codec: string;
+  audio_bitrate?: string;
+  max_duration?: number;
+  recommended: boolean;
+  notes: string;
+};
+
+export type ClipEnhancement = {
+  clip_id: string;
+  fingerprint: string;
+  titles: TitleOption[];
+  caption_style: CaptionStyleRecommendation;
+  format_recommendation: FormatRecommendation;
+  editing_ideas: EditingIdea[];
+  music_recommendation: MusicRecommendation;
+  export_presets: ExportPreset[];
+  generated_at: string;
+};
+
+export async function generateEnhancement(projectId: string, clipId: string): Promise<ClipEnhancement> {
+  return api<ClipEnhancement>(`/projects/${projectId}/clips/${clipId}/enhance`, {
+    method: 'POST',
+  });
+}
+
+export async function getEnhancement(projectId: string, clipId: string): Promise<ClipEnhancement> {
+  return api<ClipEnhancement>(`/projects/${projectId}/clips/${clipId}/enhancements`);
+}
+
+export async function regenerateTitles(projectId: string, clipId: string): Promise<{ titles: TitleOption[] }> {
+  return api<{ titles: TitleOption[] }>(`/projects/${projectId}/clips/${clipId}/enhancements/titles/regenerate`, {
+    method: 'POST',
+  });
+}
+
+export async function exportCaptions(projectId: string, clipId: string): Promise<{ format: string; content: string; caption_count: number }> {
+  return api<{ format: string; content: string; caption_count: number }>(`/projects/${projectId}/clips/${clipId}/captions/export`, {
+    method: 'POST',
+  });
+}

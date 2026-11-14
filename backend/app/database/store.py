@@ -56,6 +56,14 @@ class Store:
                 export_path TEXT NOT NULL, strategy TEXT, duration REAL,
                 file_size INTEGER, created_at TEXT NOT NULL,
                 FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            
+            # Clip enhancements table for Smart Enhancement Assistant
+            db.execute('''CREATE TABLE IF NOT EXISTS clip_enhancements (
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL, clip_id TEXT NOT NULL,
+                fingerprint TEXT NOT NULL, enhancement_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            
             if 'result_json' not in {row['name'] for row in db.execute('PRAGMA table_info(discoveries)')}:
                 db.execute('ALTER TABLE discoveries ADD COLUMN result_json TEXT')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(discoveries)')}
@@ -240,3 +248,30 @@ class Store:
 def public_project(row):
     return {key: (json.loads(value) if key in {'metadata', 'processing', 'content_profile'} and value else value)
             for key, value in row.items() if key not in {'source_path', 'transcript_path'}}
+
+    
+    def save_enhancement(self, enhancement_id, project_id, clip_id, fingerprint, enhancement_data):
+        """Save clip enhancement recommendations."""
+        with self.connect() as db:
+            db.execute(
+                'INSERT OR REPLACE INTO clip_enhancements (id, project_id, clip_id, fingerprint, enhancement_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+                (enhancement_id, project_id, clip_id, fingerprint, json.dumps(enhancement_data), datetime.now(timezone.utc).isoformat())
+            )
+    
+    def get_enhancement(self, project_id, clip_id):
+        """Get cached enhancement for a clip."""
+        with self.connect() as db:
+            row = db.execute(
+                'SELECT * FROM clip_enhancements WHERE project_id=? AND clip_id=? ORDER BY created_at DESC LIMIT 1',
+                (project_id, clip_id)
+            ).fetchone()
+        if row:
+            result = dict(row)
+            result['enhancement_json'] = json.loads(result['enhancement_json'])
+            return result
+        return None
+    
+    def delete_enhancement(self, project_id, clip_id):
+        """Delete enhancement cache for a clip."""
+        with self.connect() as db:
+            db.execute('DELETE FROM clip_enhancements WHERE project_id=? AND clip_id=?', (project_id, clip_id))
