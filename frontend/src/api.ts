@@ -494,3 +494,93 @@ export async function exportCaptions(projectId: string, clipId: string): Promise
     method: 'POST',
   });
 }
+
+
+// Speaker Intelligence Types
+export type SpeakerSegment = {
+  speaker: string;
+  start: number;
+  end: number;
+  confidence: number;
+  transcript?: string;
+  manually_corrected?: boolean;
+};
+
+export type SpeakerAnalysis = {
+  speakers: string[];
+  segments: SpeakerSegment[];
+  speaker_count: number;
+  overlapping_speech: Array<{
+    start: number;
+    end: number;
+    speakers: string[];
+  }>;
+  device: 'cpu' | 'cuda';
+  processing_time: number;
+  model_version: string;
+  fingerprint: string;
+  user_labels?: Record<string, string>;
+  transcript_segments?: Array<Segment & { speaker?: string }>;
+  error?: string;
+};
+
+export type SpeakerStatus = {
+  available: boolean;
+  error_message: string | null;
+  requires_installation: boolean;
+};
+
+export type SpeakerTimeline = {
+  timeline: string;
+  segment_count: number;
+  speaker_count: number;
+};
+
+// Speaker Intelligence API Functions
+export async function getSpeakerStatus(projectId: string): Promise<SpeakerStatus> {
+  return api<SpeakerStatus>(`/projects/${projectId}/speakers/status`);
+}
+
+export async function analyzeSpeakers(projectId: string): Promise<SpeakerAnalysis> {
+  return api<SpeakerAnalysis>(`/projects/${projectId}/speakers/analyze`, {
+    method: 'POST'
+  });
+}
+
+export async function getSpeakers(projectId: string): Promise<SpeakerAnalysis> {
+  return api<SpeakerAnalysis>(`/projects/${projectId}/speakers`);
+}
+
+export async function updateSpeakerLabel(
+  projectId: string,
+  speakerId: string,
+  userLabel: string
+): Promise<{ success: boolean; speaker_id: string; user_label: string }> {
+  return api(`/projects/${projectId}/speakers/labels`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ speaker_id: speakerId, user_label: userLabel })
+  });
+}
+
+export async function correctSpeakerSegment(
+  projectId: string,
+  segmentIndex: number,
+  newSpeaker: string
+): Promise<{ success: boolean; updated_segment: SpeakerSegment }> {
+  return api(`/projects/${projectId}/speakers/segments/${segmentIndex}/correct`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_speaker: newSpeaker })
+  });
+}
+
+export async function deleteSpeakerAnalysis(projectId: string): Promise<{ success: boolean; message: string }> {
+  return api(`/projects/${projectId}/speakers`, {
+    method: 'DELETE'
+  });
+}
+
+export async function getSpeakerTimeline(projectId: string): Promise<SpeakerTimeline> {
+  return api<SpeakerTimeline>(`/projects/${projectId}/speakers/timeline`);
+}

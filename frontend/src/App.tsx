@@ -31,6 +31,7 @@ import DiscoveryPanel from "./DiscoveryPanel";
 import DeleteProjectDialog from "./DeleteProjectDialog";
 import { CategoryDisplay } from "./CategoryDisplay";
 import { useClipPreview } from "./useClipPreview";
+import SpeakerTimelinePanel from "./SpeakerTimelinePanel";
 
 const labels = {
   queued: "Queued", extracting: "Extracting audio", loading_model: "Loading transcription model", saving: "Saving transcript", cancelled: "Cancelled",
@@ -803,6 +804,12 @@ export default function App() {
               onStop={clipPreview.stop}
               onPreview={previewClip}
               onSeek={seekClip}
+            />
+          )}
+          {project && project.status === "completed" && (
+            <SpeakerTimelinePanel
+              projectId={project.id}
+              duration={project.metadata?.duration ?? 0}
             />
           )}
           <footer className="workspace-footer">

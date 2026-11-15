@@ -8,3 +8,9 @@ soundfile>=0.12.0,<1
 numba>=0.58.0,<1
 opencv-python>=4.8.0,<5
 scenedetect[opencv]>=0.6.0,<1
+
+# Speaker Intelligence (Phase B+)
+# Install manually when needed: pip install torch torchaudio pyannote.audio
+# torch>=2.0.0,<3
+# torchaudio>=2.0.0,<3
+# pyannote.audio>=3.1.0,<4

@@ -737,3 +737,216 @@ def _format_srt_time(seconds: float) -> str:
     secs = int(seconds % 60)
     millis = int((seconds % 1) * 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+# Speaker Intelligence Routes
+
+@router.get('/projects/{project_id}/speakers/status')
+async def speaker_status(project_id: UUID, request: Request):
+    """Check if speaker diarization is available and ready."""
+    from ..services.speaker_diarizer import SpeakerDiarizer
+    
+    diarizer = SpeakerDiarizer()
+    available, error_message = diarizer.is_available()
+    
+    return {
+        'available': available,
+        'error_message': error_message,
+        'requires_installation': not available
+    }
+
+
+@router.post('/projects/{project_id}/speakers/analyze', status_code=200)
+async def analyze_speakers(project_id: UUID, request: Request):
+    """
+    Perform speaker diarization analysis on a project's audio.
+    
+    This is a long-running operation that may take 1-2x real-time.
+    """
+    from ..services.speaker_diarizer import SpeakerDiarizer
+    
+    row = project(request, project_id)
+    
+    if not row.get('transcript_path'):
+        raise HTTPException(400, 'Project must be transcribed before speaker analysis.')
+    
+    # Check if already cached
+    cached = request.app.state.store.get_speaker_analysis(str(project_id))
+    
+    # Get audio file
+    transcript_path = Path(row['transcript_path'])
+    project_dir = transcript_path.parent
+    audio_path = project_dir / f"{project_id}.wav"
+    
+    if not audio_path.exists():
+        raise HTTPException(404, 'Audio file not found. Re-transcribe project if needed.')
+    
+    metadata = json.loads(row['metadata'])
+    duration = metadata.get('duration', 0)
+    
+    # Initialize diarizer
+    diarizer = SpeakerDiarizer(device='auto')
+    available, error_message = diarizer.is_available()
+    
+    if not available:
+        raise HTTPException(503, f'Speaker diarization unavailable: {error_message}')
+    
+    # Compute fingerprint for caching
+    fingerprint = diarizer.compute_fingerprint(audio_path)
+    
+    if cached and cached.get('fingerprint') == fingerprint:
+        logger.info(f"Returning cached speaker analysis for project {project_id}")
+        return cached['analysis_json']
+    
+    # Run diarization
+    try:
+        analysis = await run_in_threadpool(
+            diarizer.analyze,
+            audio_path,
+            duration
+        )
+        
+        # Associate with transcript if available
+        transcript = json.loads(transcript_path.read_text(encoding='utf-8'))
+        if transcript.get('segments'):
+            analysis['transcript_segments'] = diarizer.associate_with_transcript(
+                analysis['segments'],
+                transcript['segments']
+            )
+        
+        # Save to database
+        analysis_id = str(uuid4())
+        request.app.state.store.save_speaker_analysis(
+            analysis_id, str(project_id), fingerprint, analysis
+        )
+        
+        logger.info(
+            f"Speaker analysis complete for project {project_id}: "
+            f"{analysis['speaker_count']} speakers, {len(analysis['segments'])} segments"
+        )
+        
+        return analysis
+        
+    except Exception as error:
+        logger.exception(f'Speaker analysis failed for project {project_id}')
+        raise HTTPException(500, f'Speaker diarization failed: {str(error)}') from None
+
+
+@router.get('/projects/{project_id}/speakers')
+async def get_speakers(project_id: UUID, request: Request):
+    """Get speaker analysis for a project."""
+    row = project(request, project_id)
+    
+    cached = request.app.state.store.get_speaker_analysis(str(project_id))
+    if not cached:
+        raise HTTPException(404, 'No speaker analysis found. Run analysis first.')
+    
+    # Get user labels
+    labels = request.app.state.store.get_speaker_labels(str(project_id))
+    
+    result = cached['analysis_json']
+    result['user_labels'] = labels
+    
+    return result
+
+
+@router.put('/projects/{project_id}/speakers/labels')
+async def update_speaker_label(project_id: UUID, request: Request):
+    """Update user-assigned label for a speaker."""
+    from ..models.speaker import SpeakerLabel
+    
+    row = project(request, project_id)
+    body = await request.json()
+    
+    try:
+        label_data = SpeakerLabel(**body)
+    except Exception as e:
+        raise HTTPException(422, f'Invalid label data: {str(e)}')
+    
+    request.app.state.store.save_speaker_label(
+        str(project_id),
+        label_data.speaker_id,
+        label_data.user_label
+    )
+    
+    return {'success': True, 'speaker_id': label_data.speaker_id, 'user_label': label_data.user_label}
+
+
+@router.post('/projects/{project_id}/speakers/segments/{segment_index}/correct')
+async def correct_speaker_segment(project_id: UUID, segment_index: int, request: Request):
+    """Correct speaker assignment for a segment."""
+    row = project(request, project_id)
+    body = await request.json()
+    
+    new_speaker = body.get('new_speaker')
+    if not new_speaker:
+        raise HTTPException(422, 'new_speaker is required')
+    
+    # Get current analysis
+    cached = request.app.state.store.get_speaker_analysis(str(project_id))
+    if not cached:
+        raise HTTPException(404, 'No speaker analysis found.')
+    
+    analysis = cached['analysis_json']
+    
+    if segment_index < 0 or segment_index >= len(analysis['segments']):
+        raise HTTPException(400, 'Invalid segment index')
+    
+    # Update the segment
+    analysis['segments'][segment_index]['speaker'] = new_speaker
+    analysis['segments'][segment_index]['manually_corrected'] = True
+    
+    # Recalculate speaker list
+    speakers = sorted(list(set(seg['speaker'] for seg in analysis['segments'])))
+    analysis['speakers'] = speakers
+    analysis['speaker_count'] = len(speakers)
+    
+    # Save updated analysis
+    request.app.state.store.save_speaker_analysis(
+        cached['id'], str(project_id), cached['fingerprint'], analysis
+    )
+    
+    return {'success': True, 'updated_segment': analysis['segments'][segment_index]}
+
+
+@router.delete('/projects/{project_id}/speakers')
+async def delete_speaker_analysis(project_id: UUID, request: Request):
+    """Delete speaker analysis and labels for a project."""
+    row = project(request, project_id)
+    
+    request.app.state.store.delete_speaker_analysis(str(project_id))
+    
+    # Also delete all labels
+    labels = request.app.state.store.get_speaker_labels(str(project_id))
+    for speaker_id in labels.keys():
+        request.app.state.store.delete_speaker_label(str(project_id), speaker_id)
+    
+    return {'success': True, 'message': 'Speaker analysis deleted'}
+
+
+@router.get('/projects/{project_id}/speakers/timeline')
+async def get_speaker_timeline(project_id: UUID, request: Request):
+    """Get human-readable speaker timeline."""
+    row = project(request, project_id)
+    
+    cached = request.app.state.store.get_speaker_analysis(str(project_id))
+    if not cached:
+        raise HTTPException(404, 'No speaker analysis found.')
+    
+    from ..services.speaker_diarizer import SpeakerDiarizer
+    diarizer = SpeakerDiarizer()
+    
+    analysis = cached['analysis_json']
+    timeline_text = diarizer.get_speaker_timeline_text(analysis['segments'])
+    
+    labels = request.app.state.store.get_speaker_labels(str(project_id))
+    
+    # Replace speaker IDs with user labels if available
+    for speaker_id, user_label in labels.items():
+        timeline_text = timeline_text.replace(speaker_id, user_label)
+    
+    return {
+        'timeline': timeline_text,
+        'segment_count': len(analysis['segments']),
+        'speaker_count': analysis['speaker_count']
+    }

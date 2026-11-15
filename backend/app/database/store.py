@@ -64,6 +64,24 @@ class Store:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (project_id) REFERENCES projects(id))''')
             
+            # Speaker Intelligence tables
+            db.execute('''CREATE TABLE IF NOT EXISTS speaker_analysis (
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+                fingerprint TEXT NOT NULL, analysis_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            
+            db.execute('''CREATE TABLE IF NOT EXISTS speaker_labels (
+                project_id TEXT NOT NULL, speaker_id TEXT NOT NULL,
+                user_label TEXT NOT NULL,
+                PRIMARY KEY (project_id, speaker_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            
+            db.execute('''CREATE TABLE IF NOT EXISTS reframing_recommendations (
+                id TEXT PRIMARY KEY, project_id TEXT NOT NULL, clip_id TEXT NOT NULL,
+                recommendation_json TEXT NOT NULL, created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES projects(id))''')
+            
             if 'result_json' not in {row['name'] for row in db.execute('PRAGMA table_info(discoveries)')}:
                 db.execute('ALTER TABLE discoveries ADD COLUMN result_json TEXT')
             columns = {row['name'] for row in db.execute('PRAGMA table_info(discoveries)')}
@@ -237,6 +255,10 @@ class Store:
     def delete(self, project_id):
         """Called only after the owned directory has been verified absent."""
         with self.connect() as db:
+            db.execute('DELETE FROM reframing_recommendations WHERE project_id=?', (project_id,))
+            db.execute('DELETE FROM speaker_labels WHERE project_id=?', (project_id,))
+            db.execute('DELETE FROM speaker_analysis WHERE project_id=?', (project_id,))
+            db.execute('DELETE FROM clip_enhancements WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM manual_clips WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM clip_feedback WHERE project_id=?', (project_id,))
             db.execute('DELETE FROM clip_exports WHERE project_id=?', (project_id,))
@@ -275,3 +297,78 @@ def public_project(row):
         """Delete enhancement cache for a clip."""
         with self.connect() as db:
             db.execute('DELETE FROM clip_enhancements WHERE project_id=? AND clip_id=?', (project_id, clip_id))
+
+    # Speaker Intelligence methods
+    def save_speaker_analysis(self, analysis_id, project_id, fingerprint, analysis_data):
+        """Save speaker diarization analysis."""
+        with self.connect() as db:
+            db.execute(
+                'INSERT OR REPLACE INTO speaker_analysis (id, project_id, fingerprint, analysis_json, created_at) VALUES (?, ?, ?, ?, ?)',
+                (analysis_id, project_id, fingerprint, json.dumps(analysis_data), datetime.now(timezone.utc).isoformat())
+            )
+    
+    def get_speaker_analysis(self, project_id):
+        """Get cached speaker analysis for a project."""
+        with self.connect() as db:
+            row = db.execute(
+                'SELECT * FROM speaker_analysis WHERE project_id=? ORDER BY created_at DESC LIMIT 1',
+                (project_id,)
+            ).fetchone()
+        if row:
+            result = dict(row)
+            result['analysis_json'] = json.loads(result['analysis_json'])
+            return result
+        return None
+    
+    def delete_speaker_analysis(self, project_id):
+        """Delete speaker analysis for a project."""
+        with self.connect() as db:
+            db.execute('DELETE FROM speaker_analysis WHERE project_id=?', (project_id,))
+    
+    def save_speaker_label(self, project_id, speaker_id, user_label):
+        """Save user-assigned label for a speaker."""
+        with self.connect() as db:
+            db.execute(
+                'INSERT OR REPLACE INTO speaker_labels (project_id, speaker_id, user_label) VALUES (?, ?, ?)',
+                (project_id, speaker_id, user_label)
+            )
+    
+    def get_speaker_labels(self, project_id):
+        """Get all speaker labels for a project."""
+        with self.connect() as db:
+            rows = db.execute(
+                'SELECT * FROM speaker_labels WHERE project_id=?',
+                (project_id,)
+            ).fetchall()
+        return {row['speaker_id']: row['user_label'] for row in rows}
+    
+    def delete_speaker_label(self, project_id, speaker_id):
+        """Delete a speaker label."""
+        with self.connect() as db:
+            db.execute('DELETE FROM speaker_labels WHERE project_id=? AND speaker_id=?', (project_id, speaker_id))
+    
+    def save_reframing_recommendation(self, recommendation_id, project_id, clip_id, recommendation_data):
+        """Save reframing recommendation for a clip."""
+        with self.connect() as db:
+            db.execute(
+                'INSERT OR REPLACE INTO reframing_recommendations (id, project_id, clip_id, recommendation_json, created_at) VALUES (?, ?, ?, ?, ?)',
+                (recommendation_id, project_id, clip_id, json.dumps(recommendation_data), datetime.now(timezone.utc).isoformat())
+            )
+    
+    def get_reframing_recommendation(self, project_id, clip_id):
+        """Get reframing recommendation for a clip."""
+        with self.connect() as db:
+            row = db.execute(
+                'SELECT * FROM reframing_recommendations WHERE project_id=? AND clip_id=? ORDER BY created_at DESC LIMIT 1',
+                (project_id, clip_id)
+            ).fetchone()
+        if row:
+            result = dict(row)
+            result['recommendation_json'] = json.loads(result['recommendation_json'])
+            return result
+        return None
+    
+    def delete_reframing_recommendation(self, project_id, clip_id):
+        """Delete reframing recommendation for a clip."""
+        with self.connect() as db:
+            db.execute('DELETE FROM reframing_recommendations WHERE project_id=? AND clip_id=?', (project_id, clip_id))
