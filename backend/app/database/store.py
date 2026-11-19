@@ -27,6 +27,22 @@ class Store:
                     db.execute(f"ALTER TABLE projects ADD COLUMN {name} TEXT DEFAULT {default_sql}")
             if 'processing' not in columns:
                 db.execute('ALTER TABLE projects ADD COLUMN processing TEXT')
+            
+            # V0.5 YouTube Link Intelligence columns
+            youtube_columns = {
+                'source_type': 'local',  # 'local' | 'youtube'
+                'youtube_video_id': None,
+                'youtube_url': None,
+                'youtube_metadata': None,
+                'transcript_source': None,  # 'whisper' | 'youtube_captions' | 'user_provided'
+                'analysis_mode': 'multimodal'  # 'multimodal' | 'transcript_only'
+            }
+            for col_name, default_value in youtube_columns.items():
+                if col_name not in columns:
+                    if default_value is None:
+                        db.execute(f'ALTER TABLE projects ADD COLUMN {col_name} TEXT')
+                    else:
+                        db.execute(f"ALTER TABLE projects ADD COLUMN {col_name} TEXT DEFAULT '{default_value}'")
             db.execute('''CREATE TABLE IF NOT EXISTS discoveries (
                 project_id TEXT PRIMARY KEY, status TEXT NOT NULL, error TEXT,
                 result_path TEXT, fingerprint TEXT, updated_at TEXT NOT NULL,
@@ -99,10 +115,10 @@ class Store:
         finally:
             db.close()
 
-    def create(self, project_id, filename, source, size, language='auto', quality='fast'):
+    def create(self, project_id, filename, source, size, language='auto', quality='fast', source_type='local'):
         with self.connect() as db:
-            db.execute('INSERT INTO projects (id,filename,source_path,size,status,created_at,language,quality) VALUES (?,?,?,?,?,?,?,?)',
-                       (project_id, filename, str(source), size, 'waiting', datetime.now(timezone.utc).isoformat(), language, quality))
+            db.execute('INSERT INTO projects (id,filename,source_path,size,status,created_at,language,quality,source_type,analysis_mode) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                       (project_id, filename, str(source), size, 'waiting', datetime.now(timezone.utc).isoformat(), language, quality, source_type, 'multimodal' if source_type == 'local' else 'transcript_only'))
 
     def get(self, project_id):
         with self.connect() as db:
@@ -115,7 +131,8 @@ class Store:
 
     def update(self, project_id, **values):
         allowed = {'status', 'metadata', 'transcript_path', 'error', 'warning', 'language', 'quality', 'processing', 
-                   'content_profile', 'detected_category', 'user_category', 'category_confidence'}
+                   'content_profile', 'detected_category', 'user_category', 'category_confidence',
+                   'source_type', 'youtube_video_id', 'youtube_url', 'youtube_metadata', 'transcript_source', 'analysis_mode'}
         if not values or not values.keys() <= allowed:
             raise ValueError('Invalid project update')
         if isinstance(values.get('metadata'), dict):
@@ -124,6 +141,8 @@ class Store:
             values['processing'] = json.dumps(values['processing'])
         if isinstance(values.get('content_profile'), dict):
             values['content_profile'] = json.dumps(values['content_profile'])
+        if isinstance(values.get('youtube_metadata'), dict):
+            values['youtube_metadata'] = json.dumps(values['youtube_metadata'])
         with self.connect() as db:
             db.execute(f"UPDATE projects SET {','.join(f'{key}=?' for key in values)} WHERE id=?",
                        (*values.values(), project_id))
@@ -268,7 +287,7 @@ class Store:
 
 
 def public_project(row):
-    return {key: (json.loads(value) if key in {'metadata', 'processing', 'content_profile'} and value else value)
+    return {key: (json.loads(value) if key in {'metadata', 'processing', 'content_profile', 'youtube_metadata'} and value else value)
             for key, value in row.items() if key not in {'source_path', 'transcript_path'}}
 
     

@@ -5,7 +5,6 @@ import {
 } from 'lucide-react';
 import {
   ClipEnhancement,
-  TitleOption,
   generateEnhancement,
   regenerateTitles,
   exportCaptions
@@ -17,7 +16,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function ClipEnhancementPanel({ projectId, clipId, onClose }: Props) {
+export default function ClipEnhancementPanel({ projectId, clipId, onClose }: Props) {
   const [enhancement, setEnhancement] = useState<ClipEnhancement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');

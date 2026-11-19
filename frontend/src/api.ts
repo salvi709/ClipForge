@@ -59,6 +59,12 @@ export type Project = {
   user_category?: ContentCategory;
   category_confidence?: string;
   content_profile?: ContentProfile;
+  source_type?: "local" | "youtube";
+  youtube_video_id?: string | null;
+  youtube_url?: string | null;
+  youtube_metadata?: any | null;
+  transcript_source?: string | null;
+  analysis_mode?: "multimodal" | "transcript_only";
 };
 export type Segment = {
   id: number;

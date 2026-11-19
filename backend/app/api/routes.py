@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -949,4 +950,270 @@ async def get_speaker_timeline(project_id: UUID, request: Request):
         'timeline': timeline_text,
         'segment_count': len(analysis['segments']),
         'speaker_count': analysis['speaker_count']
+    }
+
+
+# YouTube Link Intelligence Routes
+
+@router.post('/youtube/analyze', status_code=201)
+async def analyze_youtube_video(request: Request):
+    """
+    Analyze a YouTube video from URL.
+    
+    Creates a project, fetches metadata and transcript, ready for discovery.
+    """
+    from ..services.youtube_processor import YouTubeProcessor
+    from ..services.youtube_metadata import YouTubeMetadataService
+    from ..services.youtube_transcript import YouTubeTranscriptService
+    from ..models.youtube import YouTubeAnalysisRequest
+    
+    body = await request.json()
+    
+    try:
+        req = YouTubeAnalysisRequest(**body)
+    except Exception as e:
+        raise HTTPException(422, f'Invalid request: {str(e)}')
+    
+    # Validate URL and extract video ID
+    is_valid, video_id, error_msg = YouTubeProcessor.validate_url(req.url)
+    
+    if not is_valid:
+        raise HTTPException(400, error_msg)
+    
+    logger.info(f"Analyzing YouTube video: {video_id}")
+    
+    # Check if project already exists for this video
+    existing_projects = request.app.state.store.list()
+    for proj in existing_projects:
+        if proj.get('youtube_video_id') == video_id:
+            logger.info(f"Project already exists for video {video_id}: {proj['id']}")
+            return {'project_id': proj['id'], 'status': 'existing'}
+    
+    # Create project
+    project_id = str(uuid4())
+    data_dir = request.app.state.settings.data_dir
+    project_dir = data_dir / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Fetch metadata (optional, graceful fallback)
+    metadata_service = YouTubeMetadataService()
+    metadata = metadata_service.get_video_metadata(video_id)
+    
+    # Use metadata title or fallback
+    filename = metadata['title'] if metadata else f"YouTube Video {video_id}"
+    # Clean filename
+    filename = re.sub(r'[<>:"/\\|?*]', '', filename)[:100]
+    
+    # Create database record
+    request.app.state.store.create(
+        project_id=project_id,
+        filename=filename,
+        source=req.url,
+        size=0,  # YouTube projects have no local file size
+        language=req.language or 'en',
+        quality='fast',  # Not applicable for YouTube
+        source_type='youtube'
+    )
+    
+    # Save YouTube-specific data
+    request.app.state.store.update(
+        project_id,
+        youtube_video_id=video_id,
+        youtube_url=req.url,
+        youtube_metadata=metadata,
+        metadata=metadata or {'duration': 0},
+        analysis_mode='transcript_only'
+    )
+    
+    # Fetch transcript
+    transcript_service = YouTubeTranscriptService()
+    available, transcript_error = transcript_service.is_available()
+    
+    if not available:
+        # YouTube transcript API unavailable, mark as waiting for manual import
+        request.app.state.store.update(
+            project_id,
+            status='completed',
+            warning=f'Transcript retrieval unavailable: {transcript_error}. Please import transcript manually.'
+        )
+        
+        logger.warning(f"Transcript unavailable for {video_id}: {transcript_error}")
+        
+        return {
+            'project_id': project_id,
+            'status': 'awaiting_transcript',
+            'metadata': metadata,
+            'error': transcript_error
+        }
+    
+    # Try to fetch transcript
+    youtube_transcript = transcript_service.get_transcript(
+        video_id,
+        languages=[req.language] if req.language else ['en']
+    )
+    
+    if not youtube_transcript:
+        # Transcript not available, mark as awaiting manual import
+        request.app.state.store.update(
+            project_id,
+            status='completed',
+            warning='No captions available for this video. Please import transcript manually to continue.',
+            transcript_source=None
+        )
+        
+        logger.info(f"No transcript available for {video_id}, awaiting manual import")
+        
+        return {
+            'project_id': project_id,
+            'status': 'awaiting_transcript',
+            'metadata': metadata,
+            'warning': 'No captions available'
+        }
+    
+    # Normalize transcript to ClipForge format
+    clipforge_transcript = transcript_service.normalize_to_clipforge_format(
+        youtube_transcript,
+        video_id
+    )
+    
+    # Save transcript
+    transcript_path = project_dir / 'transcript.json'
+    transcript_path.write_text(json.dumps(clipforge_transcript, ensure_ascii=False), encoding='utf-8')
+    
+    # Update project
+    request.app.state.store.update(
+        project_id,
+        status='completed',
+        transcript_path=str(transcript_path),
+        transcript_source='youtube_captions'
+    )
+    
+    logger.info(f"YouTube video {video_id} analyzed successfully: {len(clipforge_transcript['segments'])} segments")
+    
+    return {
+        'project_id': project_id,
+        'status': 'completed',
+        'metadata': metadata,
+        'segment_count': len(clipforge_transcript['segments']),
+        'language': clipforge_transcript['language'],
+        'is_generated': clipforge_transcript.get('is_generated', False)
+    }
+
+
+@router.get('/youtube/transcript/{project_id}')
+async def get_youtube_transcript(project_id: UUID, request: Request):
+    """Get transcript for a YouTube project."""
+    row = project(request, project_id)
+    
+    if row.get('source_type') != 'youtube':
+        raise HTTPException(400, 'Not a YouTube project')
+    
+    if not row.get('transcript_path'):
+        raise HTTPException(404, 'Transcript not available yet')
+    
+    transcript_path = Path(row['transcript_path'])
+    
+    if not transcript_path.exists():
+        raise HTTPException(404, 'Transcript file not found')
+    
+    transcript = json.loads(transcript_path.read_text(encoding='utf-8'))
+    
+    return transcript
+
+
+@router.post('/youtube/transcript/{project_id}/manual')
+async def import_manual_transcript(project_id: UUID, request: Request):
+    """Import user-provided transcript for a YouTube project."""
+    from ..services.youtube_transcript import YouTubeTranscriptService
+    from ..models.youtube import ManualTranscriptImport
+    
+    row = project(request, project_id)
+    
+    if row.get('source_type') != 'youtube':
+        raise HTTPException(400, 'Not a YouTube project')
+    
+    body = await request.json()
+    
+    try:
+        import_req = ManualTranscriptImport(**body)
+    except Exception as e:
+        raise HTTPException(422, f'Invalid request: {str(e)}')
+    
+    video_id = row.get('youtube_video_id')
+    if not video_id:
+        raise HTTPException(400, 'Video ID not found')
+    
+    # Parse manual transcript
+    youtube_transcript = YouTubeTranscriptService.import_manual_transcript(
+        content=import_req.transcript,
+        format=import_req.format,
+        video_id=video_id
+    )
+    
+    if not youtube_transcript:
+        raise HTTPException(400, f'Failed to parse {import_req.format.upper()} transcript')
+    
+    # Normalize to ClipForge format
+    clipforge_transcript = YouTubeTranscriptService.normalize_to_clipforge_format(
+        youtube_transcript,
+        video_id
+    )
+    
+    # Save transcript
+    data_dir = request.app.state.settings.data_dir
+    project_dir = data_dir / str(project_id)
+    project_dir.mkdir(parents=True, exist_ok=True)
+    
+    transcript_path = project_dir / 'transcript.json'
+    transcript_path.write_text(json.dumps(clipforge_transcript, ensure_ascii=False), encoding='utf-8')
+    
+    # Update project
+    request.app.state.store.update(
+        str(project_id),
+        status='completed',
+        transcript_path=str(transcript_path),
+        transcript_source='user_provided',
+        warning=None  # Clear previous warning
+    )
+    
+    logger.info(f"Manual transcript imported for project {project_id}: {len(clipforge_transcript['segments'])} segments")
+    
+    return {
+        'success': True,
+        'segment_count': len(clipforge_transcript['segments']),
+        'format': import_req.format
+    }
+
+
+@router.get('/youtube/playback-url/{project_id}/{clip_id}')
+async def get_youtube_playback_url(project_id: UUID, clip_id: str, request: Request):
+    """Get YouTube playback URL with timestamp for a clip."""
+    from ..services.youtube_processor import YouTubeProcessor
+    
+    row = project(request, project_id)
+    
+    if row.get('source_type') != 'youtube':
+        raise HTTPException(400, 'Not a YouTube project')
+    
+    video_id = row.get('youtube_video_id')
+    if not video_id:
+        raise HTTPException(404, 'Video ID not found')
+    
+    # Get clip
+    result = request.app.state.jobs.discovery.result(str(project_id))
+    all_clips = result.get('clips', []) + result.get('more_discoveries', [])
+    clip = next((c for c in all_clips if c['id'] == clip_id), None)
+    
+    if not clip:
+        raise HTTPException(404, 'Clip not found')
+    
+    # Build playback URL
+    playback_url = YouTubeProcessor.build_playback_url(video_id, clip['start'])
+    embed_url = YouTubeProcessor.build_embed_url(video_id, clip['start'])
+    
+    return {
+        'playback_url': playback_url,
+        'embed_url': embed_url,
+        'video_id': video_id,
+        'start_seconds': clip['start']
     }

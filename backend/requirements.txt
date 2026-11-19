@@ -14,3 +14,7 @@ scenedetect[opencv]>=0.6.0,<1
 # torch>=2.0.0,<3
 # torchaudio>=2.0.0,<3
 # pyannote.audio>=3.1.0,<4
+
+# YouTube Link Intelligence V1
+youtube-transcript-api>=0.6.0,<1
+google-api-python-client>=2.0.0,<3  # Optional: YouTube Data API v3 for metadata

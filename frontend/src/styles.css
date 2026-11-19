@@ -329,6 +329,36 @@ h1 {
   margin-top: 12px;
   line-height: 1.7;
 }
+.tab-switcher {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  background: #25282c;
+  border: 1px solid #3b3e42;
+  border-radius: 6px;
+  width: fit-content;
+}
+.tab-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  background: transparent;
+  color: #92979e;
+  border: none;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.tab-button:hover:not(.active) {
+  background: #303439;
+}
+.tab-button.active {
+  background: #1a1c1f;
+  color: #f2f3f0;
+  border: 1px solid #3b3e42;
+}
 .primary,
 .secondary {
   display: inline-flex;
@@ -2429,4 +2459,195 @@ button:active:not(:disabled) { transform: translateY(1px); }
   padding: 20px;
   justify-content: center;
   color: #92979e;
+}
+
+
+/* YouTube Link Intelligence Styles */
+.youtube-link-panel {
+  background: #1e1e28;
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.youtube-heading {
+  margin-bottom: 20px;
+}
+
+.youtube-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  color: #e4e4ec;
+}
+
+.youtube-heading p {
+  margin: 0;
+  color: #92979e;
+  font-size: 13px;
+}
+
+.youtube-input-section {
+  margin-bottom: 20px;
+}
+
+.youtube-input-section label {
+  display: block;
+  margin-bottom: 12px;
+}
+
+.youtube-input-section label,
+.youtube-input-section select,
+.import-form label {
+  color: #92979e;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  display: block;
+}
+
+.youtube-input-section input,
+.import-form input,
+.import-form textarea,
+.import-form select {
+  width: 100%;
+  background: #24242e;
+  border: 1px solid #3a3a44;
+  color: #e4e4ec;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  margin-top: 6px;
+}
+
+.youtube-input-section input:disabled,
+.import-form input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.youtube-input-section input:focus,
+.import-form textarea:focus,
+.import-form select:focus {
+  outline: none;
+  border-color: #709fd0;
+  box-shadow: 0 0 0 2px rgba(112, 159, 208, 0.1);
+}
+
+.youtube-button-group {
+  display: flex;
+  gap: 8px;
+}
+
+.result-status {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #24242e;
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+}
+
+.result-status svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.result-status svg.success {
+  color: #8bc490;
+}
+
+.result-status svg.warning {
+  color: #f0ad4e;
+}
+
+.result-status strong {
+  display: block;
+  color: #e4e4ec;
+  margin-bottom: 4px;
+}
+
+.result-detail {
+  color: #92979e;
+  font-size: 12px;
+  margin: 4px 0 0 0;
+}
+
+.youtube-result-section {
+  margin-top: 20px;
+}
+
+.youtube-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #92979e;
+}
+
+.youtube-empty-state p {
+  margin: 12px 0;
+}
+
+.hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.transcript-import-section {
+  margin-top: 12px;
+}
+
+.import-form {
+  background: #24242e;
+  padding: 16px;
+  border-radius: 4px;
+  margin-top: 12px;
+}
+
+.import-form label {
+  margin-bottom: 12px;
+}
+
+.import-form textarea {
+  resize: vertical;
+  min-height: 150px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.analysis-complete-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(139, 196, 144, 0.1);
+  border: 1px solid #8bc490;
+  padding: 12px;
+  border-radius: 4px;
+  color: #8bc490;
+  font-size: 13px;
+  margin-top: 12px;
+}
+
+.analysis-complete-notice p {
+  margin: 0;
+}
+
+.project-id-badge {
+  display: inline-block;
+  background: #24242e;
+  color: #709fd0;
+  padding: 6px 12px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  margin-top: 12px;
 }

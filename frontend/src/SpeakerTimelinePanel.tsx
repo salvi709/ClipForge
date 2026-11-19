@@ -8,7 +8,6 @@ import {
   correctSpeakerSegment,
   timestamp,
   SpeakerAnalysis,
-  SpeakerSegment,
   SpeakerStatus,
 } from "./api";
 
@@ -353,7 +352,7 @@ export default function SpeakerTimelinePanel({ projectId, duration }: SpeakerTim
                           setSegmentSpeakerInput(segment.speaker);
                         }}>
                           {label}
-                          {segment.manually_corrected && <CheckCircle size={12} style={{ marginLeft: 4 }} title="Manually corrected" />}
+                          {segment.manually_corrected && <CheckCircle size={12} style={{ marginLeft: 4 }} />}
                         </span>
                       )}
                     </div>

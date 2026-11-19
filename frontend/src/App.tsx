@@ -9,6 +9,7 @@ import {
   Film,
   HardDrive,
   Layers2,
+  Link2,
   LoaderCircle,
   Plus,
   Search,
@@ -32,6 +33,7 @@ import DeleteProjectDialog from "./DeleteProjectDialog";
 import { CategoryDisplay } from "./CategoryDisplay";
 import { useClipPreview } from "./useClipPreview";
 import SpeakerTimelinePanel from "./SpeakerTimelinePanel";
+import YouTubeLinkPanel from "./YouTubeLinkPanel";
 
 const labels = {
   queued: "Queued", extracting: "Extracting audio", loading_model: "Loading transcription model", saving: "Saving transcript", cancelled: "Cancelled",
@@ -56,6 +58,7 @@ export default function App() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [notice, setNotice] = useState("");
+  const [activeTab, setActiveTab] = useState<"upload" | "youtube">("upload");
   const deleteLock = useRef(false);
   const deletedIds = useRef(new Set<string>());
   const [uploading, setUploading] = useState<number | null>(null);
@@ -380,80 +383,116 @@ export default function App() {
               <h1>
                 {project
                   ? "Your footage, transcribed."
+                  : activeTab === "youtube"
+                  ? "Analyze YouTube content."
                   : "Start with your footage."}
               </h1>
               <p>
                 {project
                   ? "Review your video and jump to any moment in the transcript."
+                  : activeTab === "youtube"
+                  ? "Paste a YouTube URL to retrieve transcripts and discover key moments."
                   : "Turn spoken moments into a searchable, timestamped transcript."}
               </p>
             </div>
-            <button
-              className="primary"
-              disabled={uploading !== null || !connected}
-              onClick={() => input.current?.click()}
-            >
-              <Plus size={17} /> Import video
-            </button>
-          </div>
-          <div className="transcription-options">
-            <label>
-              Speech language
-              <select
-                aria-label="Speech language"
-                value={options.language}
-                disabled={uploading !== null || (!!project && busy(project))}
-                onChange={(event) =>
-                  setOptions((previous) => ({
-                    language: event.target.value as "auto" | "en",
-                    quality: previous.quality,
-                  }))
-                }
-              >
-                <option value="auto">Auto Detect</option>
-                <option value="en">English</option>
-              </select>
-            </label>
-            <label>
-              Transcription quality
-              <select
-                aria-label="Transcription quality"
-                value={options.quality}
-                disabled={uploading !== null || (!!project && busy(project))}
-                onChange={(event) =>
-                  setOptions((previous) => ({
-                    quality: event.target.value as "fast" | "accurate",
-                    language: previous.language,
-                  }))
-                }
-              >
-                <option value="fast">
-                  Fast · {health?.transcription_models?.fast ?? "base"}
-                </option>
-                <option
-                  value="accurate"
-                  disabled={!health?.quality_model_ready}
+            {!project && (
+              <div className="tab-switcher">
+                <button
+                  className={`tab-button ${activeTab === "upload" ? "active" : ""}`}
+                  onClick={() => setActiveTab("upload")}
+                  aria-label="Upload video tab"
                 >
-                  Quality · {health?.transcription_models?.accurate ?? "small"}
-                  {!health?.quality_model_ready ? " (not installed)" : ""}
-                </option>
-              </select>
-            </label>
-            {project && (
+                  <Upload size={16} /> Upload Video
+                </button>
+                <button
+                  className={`tab-button ${activeTab === "youtube" ? "active" : ""}`}
+                  onClick={() => setActiveTab("youtube")}
+                  aria-label="YouTube link tab"
+                >
+                  <Link2 size={16} /> YouTube Link
+                </button>
+              </div>
+            )}
+            {activeTab === "upload" && !project && (
               <button
-                className="secondary"
-                disabled={!connected || busy(project)}
-                onClick={() => void retranscribe()}
+                className="primary"
+                disabled={uploading !== null || !connected}
+                onClick={() => input.current?.click()}
               >
-                Re-transcribe
+                <Plus size={17} /> Import video
               </button>
             )}
-            <p>
-              {project
-                ? "Re-transcribing replaces the transcript and resets clip suggestions after success."
-                : "Quality uses the larger small model. Auto Detect also supports mixed-language speech. No words are added to uncertain gaps."}
-            </p>
           </div>
+          {activeTab === "upload" && (
+            <>
+              <div className="transcription-options">
+                <label>
+                  Speech language
+                  <select
+                    aria-label="Speech language"
+                    value={options.language}
+                    disabled={uploading !== null || (!!project && busy(project))}
+                    onChange={(event) =>
+                      setOptions((previous) => ({
+                        language: event.target.value as "auto" | "en",
+                        quality: previous.quality,
+                      }))
+                    }
+                  >
+                    <option value="auto">Auto Detect</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label>
+                  Transcription quality
+                  <select
+                    aria-label="Transcription quality"
+                    value={options.quality}
+                    disabled={uploading !== null || (!!project && busy(project))}
+                    onChange={(event) =>
+                      setOptions((previous) => ({
+                        quality: event.target.value as "fast" | "accurate",
+                        language: previous.language,
+                      }))
+                    }
+                  >
+                    <option value="fast">
+                      Fast · {health?.transcription_models?.fast ?? "base"}
+                    </option>
+                    <option
+                      value="accurate"
+                      disabled={!health?.quality_model_ready}
+                    >
+                      Quality · {health?.transcription_models?.accurate ?? "small"}
+                      {!health?.quality_model_ready ? " (not installed)" : ""}
+                    </option>
+                  </select>
+                </label>
+                {project && (
+                  <button
+                    className="secondary"
+                    disabled={!connected || busy(project)}
+                    onClick={() => void retranscribe()}
+                  >
+                    Re-transcribe
+                  </button>
+                )}
+                <p>
+                  {project
+                    ? "Re-transcribing replaces the transcript and resets clip suggestions after success."
+                    : "Quality uses the larger small model. Auto Detect also supports mixed-language speech. No words are added to uncertain gaps."}
+                </p>
+              </div>
+            </>
+          )}
+          {activeTab === "youtube" && !project && (
+            <YouTubeLinkPanel
+              onProjectCreated={(projectId) => {
+                setSelected(projectId);
+                setActiveTab("upload");
+              }}
+            />
+          )}
           <input
             ref={input}
             aria-label="Choose MP4 video"

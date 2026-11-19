@@ -57,6 +57,7 @@ type Props = {
   onPreview: (start: number, end: number) => Promise<void>;
   onStop: () => void;
   onSeek: (start: number) => void;
+  analysisMode?: "multimodal" | "transcript_only";
 };
 
 function DiscoveryPanel({
@@ -68,6 +69,7 @@ function DiscoveryPanel({
   onPreview,
   onStop,
   onSeek,
+  analysisMode = "multimodal",
 }: Props) {
   const [result, setResult] = useState<DiscoveryResult>({
     status: "idle",
