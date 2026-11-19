@@ -843,6 +843,7 @@ export default function App() {
               onStop={clipPreview.stop}
               onPreview={previewClip}
               onSeek={seekClip}
+              analysisMode={project.analysis_mode}
             />
           )}
           {project && project.status === "completed" && (

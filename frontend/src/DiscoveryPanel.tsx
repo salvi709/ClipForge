@@ -5,6 +5,7 @@ import {
   Check,
   CircleAlert,
   Download,
+  Link,
   LoaderCircle,
   Play,
   PlusCircle,
@@ -359,6 +360,7 @@ function DiscoveryPanel({
                 key={clip.id}
                 clip={clip}
                 projectId={projectId}
+                analysisMode={analysisMode}
                 editable={!active && result.status === "completed"}
                 duration={duration}
                 selected={selected === clip.id}
@@ -404,6 +406,7 @@ function DiscoveryPanel({
                       key={clip.id}
                       clip={clip}
                       projectId={projectId}
+                      analysisMode={analysisMode}
                       editable={!active && result.status === "completed"}
                       duration={duration}
                       selected={selected === clip.id}
@@ -631,6 +634,7 @@ function ClipCard({
   onSave,
   editable,
   onFeedbackSubmitted,
+  analysisMode = "multimodal",
 }: {
   clip: Clip;
   projectId: string;
@@ -641,6 +645,7 @@ function ClipCard({
   onSave: (start: number, end: number) => Promise<void>;
   editable: boolean;
   onFeedbackSubmitted?: () => void;
+  analysisMode?: "multimodal" | "transcript_only";
 }) {
   const [start, setStart] = useState(String(clip.start));
   const [end, setEnd] = useState(String(clip.end));
@@ -785,20 +790,33 @@ function ClipCard({
         <button className="secondary" onClick={() => void onPreview()}>
           <Play size={14} /> Preview clip {clip.rank}
         </button>
-        <button 
-          className="primary" 
-          onClick={() => void handleDownload()}
-          disabled={exporting}
-          title={clip.adjusted ? "Download (re-encoded for accuracy)" : "Download (fast stream copy)"}
-        >
-          {exporting ? (
-            <><LoaderCircle size={14} className="spin" /> Exporting...</>
-          ) : exportSuccess ? (
-            <><Download size={14} /> Downloaded!</>
-          ) : (
-            <><Download size={14} /> Download MP4</>
-          )}
-        </button>
+        {analysisMode === "transcript_only" ? (
+          <button 
+            className="primary" 
+            title="Open this moment on YouTube"
+            onClick={() => {
+              // Will be implemented with playback URL from backend
+              alert("YouTube playback link coming soon");
+            }}
+          >
+            <Link size={14} /> Open on YouTube
+          </button>
+        ) : (
+          <button 
+            className="primary" 
+            onClick={() => void handleDownload()}
+            disabled={exporting}
+            title={clip.adjusted ? "Download (re-encoded for accuracy)" : "Download (fast stream copy)"}
+          >
+            {exporting ? (
+              <><LoaderCircle size={14} className="spin" /> Exporting...</>
+            ) : exportSuccess ? (
+              <><Download size={14} /> Downloaded!</>
+            ) : (
+              <><Download size={14} /> Download MP4</>
+            )}
+          </button>
+        )}
         <button 
           className="secondary"
           onClick={() => setShowEnhancement(!showEnhancement)}
