@@ -33,7 +33,7 @@ export default function YouTubeLinkPanel({ onProjectCreated }: YouTubeLinkPanelP
     setResult(null);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/youtube/analyze", {
+      const response = await fetch("/api/youtube/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim(), language: "en" }),
@@ -46,7 +46,7 @@ export default function YouTubeLinkPanel({ onProjectCreated }: YouTubeLinkPanelP
 
       const data = await response.json();
       setResult(data);
-      if (data.project_id) {
+      if (data.project_id && (data.status === "completed" || data.status === "existing")) {
         onProjectCreated?.(data.project_id);
       }
     } catch (err) {
@@ -72,7 +72,7 @@ export default function YouTubeLinkPanel({ onProjectCreated }: YouTubeLinkPanelP
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/youtube/transcript/${result.project_id}/manual`,
+        `/api/youtube/transcript/${result.project_id}/manual`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -101,6 +101,7 @@ export default function YouTubeLinkPanel({ onProjectCreated }: YouTubeLinkPanelP
       );
       setShowManualImport(false);
       setManualTranscript("");
+      onProjectCreated?.(result.project_id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error importing transcript");
     } finally {

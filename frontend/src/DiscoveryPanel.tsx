@@ -793,13 +793,21 @@ function ClipCard({
         {analysisMode === "transcript_only" ? (
           <button 
             className="primary" 
-            title="Open this moment on YouTube"
-            onClick={() => {
-              // Will be implemented with playback URL from backend
-              alert("YouTube playback link coming soon");
+            title="Get YouTube timestamped link"
+            onClick={async () => {
+              try {
+                const res = await api<{ playback_url: string }>(`/youtube/playback-url/${projectId}/${clip.id}`);
+                if (navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(res.playback_url).catch(() => {});
+                }
+                setFeedbackStatus(`YouTube URL copied: ${res.playback_url}`);
+                setTimeout(() => setFeedbackStatus(""), 4000);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Could not get YouTube playback URL.");
+              }
             }}
           >
-            <Link size={14} /> Open on YouTube
+            <Link size={14} /> Copy YouTube URL
           </button>
         ) : (
           <button 

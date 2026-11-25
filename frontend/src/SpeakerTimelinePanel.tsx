@@ -231,7 +231,7 @@ export default function SpeakerTimelinePanel({ projectId, duration }: SpeakerTim
                 const color = getSpeakerColor(speakerId);
                 
                 return (
-                  <div key={speakerId} className="speaker-label-item" style={{ borderLeftColor: color }}>
+                  <div key={speakerId} className="speaker-label-item">
                     <div className="speaker-badge" style={{ backgroundColor: color }}>
                       {label.charAt(0)}
                     </div>

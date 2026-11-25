@@ -396,31 +396,33 @@ export default function App() {
               </p>
             </div>
             {!project && (
-              <div className="tab-switcher">
-                <button
-                  className={`tab-button ${activeTab === "upload" ? "active" : ""}`}
-                  onClick={() => setActiveTab("upload")}
-                  aria-label="Upload video tab"
-                >
-                  <Upload size={16} /> Upload Video
-                </button>
-                <button
-                  className={`tab-button ${activeTab === "youtube" ? "active" : ""}`}
-                  onClick={() => setActiveTab("youtube")}
-                  aria-label="YouTube link tab"
-                >
-                  <Link2 size={16} /> YouTube Link
-                </button>
+              <div className="page-heading-actions">
+                <div className="tab-switcher">
+                  <button
+                    className={`tab-button ${activeTab === "upload" ? "active" : ""}`}
+                    onClick={() => setActiveTab("upload")}
+                    aria-label="Upload video tab"
+                  >
+                    <Upload size={16} /> Upload Video
+                  </button>
+                  <button
+                    className={`tab-button ${activeTab === "youtube" ? "active" : ""}`}
+                    onClick={() => setActiveTab("youtube")}
+                    aria-label="YouTube link tab"
+                  >
+                    <Link2 size={16} /> YouTube Link
+                  </button>
+                </div>
+                {activeTab === "upload" && (
+                  <button
+                    className="primary"
+                    disabled={uploading !== null || !connected}
+                    onClick={() => input.current?.click()}
+                  >
+                    <Plus size={17} /> Import video
+                  </button>
+                )}
               </div>
-            )}
-            {activeTab === "upload" && !project && (
-              <button
-                className="primary"
-                disabled={uploading !== null || !connected}
-                onClick={() => input.current?.click()}
-              >
-                <Plus size={17} /> Import video
-              </button>
             )}
           </div>
           {activeTab === "upload" && (
@@ -505,8 +507,8 @@ export default function App() {
             <div className="notice">
               <CircleAlert size={17} />
               <div>
-                Local engine disconnected. Start the FastAPI backend on port
-                8000. Saved projects will return when it reconnects.
+                Local engine disconnected. Waiting for the backend server on
+                port 3000. Saved projects will return when it reconnects.
               </div>
             </div>
           )}
