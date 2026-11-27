@@ -7,10 +7,10 @@ import "@fontsource/space-grotesk/500.css";
 import "@fontsource/space-grotesk/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "./styles.css";
-import App from "./App";
+import RootRouter from "./RootRouter";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <RootRouter />
   </React.StrictMode>,
 );

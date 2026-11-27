@@ -48,7 +48,11 @@ const labels = {
 const busy = (project: Project) =>
   ["waiting", "preparing", "queued", "extracting", "loading_model", "transcribing", "saving"].includes(project.status);
 
-export default function App() {
+interface AppProps {
+  onNavigateHome?: () => void;
+}
+
+export default function App({ onNavigateHome }: AppProps = {}) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
@@ -352,15 +356,26 @@ export default function App() {
             Workspace <ChevronRight size={13} />
             <span>{project ? "Transcription" : "Overview"}</span>
           </div>
-          <div
-            className={`engine ${connected && health?.status === "ready" ? "ready" : ""}`}
-          >
-            <span />
-            {!connected
-              ? "Engine disconnected"
-              : health?.status === "ready"
-                ? "Local engine ready"
-                : "Engine needs setup"}
+          <div className="topbar-right">
+            {onNavigateHome && (
+              <button
+                type="button"
+                className="text-button topbar-site-link"
+                onClick={onNavigateHome}
+              >
+                Overview site
+              </button>
+            )}
+            <div
+              className={`engine ${connected && health?.status === "ready" ? "ready" : ""}`}
+            >
+              <span />
+              {!connected
+                ? "Engine disconnected"
+                : health?.status === "ready"
+                  ? "Local engine ready"
+                  : "Engine needs setup"}
+            </div>
           </div>
         </header>
         <div className="workspace">
