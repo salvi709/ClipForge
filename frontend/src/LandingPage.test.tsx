@@ -15,43 +15,46 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
-describe("ClipForge marketing site and routing", () => {
-  it("renders the landing page at / with interactive showcase, FAQ accordion, and legal routes", () => {
+describe("ClipForge teaser landing page and routing", () => {
+  it("renders the mystery-driven landing sections, floating fragments, interactive previews, and legal routes", () => {
     render(<RootRouter />);
 
     expect(
       screen.getByRole("heading", {
-        name: "Turn Long Videos Into Moments Worth Watching.",
+        name: "Every Long Video Has Its Moments.",
       }),
     ).toBeInTheDocument();
 
     const primaryNav = within(
       screen.getByRole("navigation", { name: "Primary navigation" }),
     );
-    expect(primaryNav.getByRole("link", { name: "Features" })).toBeInTheDocument();
-    expect(primaryNav.getByRole("link", { name: "How It Works" })).toBeInTheDocument();
+    expect(primaryNav.getByRole("link", { name: "Inside" })).toBeInTheDocument();
+    expect(primaryNav.getByRole("link", { name: "Experience" })).toBeInTheDocument();
     expect(primaryNav.getByRole("link", { name: "Use Cases" })).toBeInTheDocument();
-    expect(primaryNav.getByRole("link", { name: "FAQ" })).toBeInTheDocument();
 
-    // Switch interactive showcase tabs
-    fireEvent.click(screen.getByRole("tab", { name: /Transcript/i }));
-    expect(
-      screen.getByPlaceholderText(/Filter preview transcript/i),
-    ).toBeInTheDocument();
+    // Switch moment inside Hero fragment stage
+    fireEvent.click(screen.getByRole("button", { name: /Quiet Before the Payoff/i }));
+    expect(screen.getAllByText(/11:08/).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole("tab", { name: /Enhancement/i }));
-    expect(screen.getByText(/GENERATED TITLE HOOKS/i)).toBeInTheDocument();
+    // Interactive Visual Interlude strip
+    const filmstrip = within(
+      screen.getByRole("group", { name: /Video moments filmstrip/i }),
+    );
+    fireEvent.click(filmstrip.getByRole("button", { name: /19:34/i }));
+    expect(screen.getByText(/Closing payoff/i)).toBeInTheDocument();
 
-    // Toggle FAQ accordion item
-    const youtubeQuestion = screen.getByRole("button", {
-      name: /Can ClipForge work with YouTube videos\?/i,
-    });
-    expect(youtubeQuestion).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(youtubeQuestion);
-    expect(youtubeQuestion).toHaveAttribute("aria-expanded", "true");
-    expect(
-      screen.getByText(/import your own SRT, VTT, or plain-text transcript/i),
-    ).toBeInTheDocument();
+    // Interactive Aspect ratio toggle in Creative Experience
+    const wideButton = screen.getByRole("button", { name: "16:9" });
+    fireEvent.click(wideButton);
+    expect(wideButton).toHaveClass("active");
+    expect(screen.getAllByText("16:9").length).toBeGreaterThanOrEqual(2);
+
+    // Compact 5 Use Cases
+    expect(screen.getByRole("heading", { name: "Gaming" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Podcasts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Education" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Vlogs" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Entertainment" })).toBeInTheDocument();
 
     // Navigate to Privacy Policy and back
     fireEvent.click(screen.getByRole("link", { name: "Privacy Policy" }));
@@ -66,14 +69,11 @@ describe("ClipForge marketing site and routing", () => {
     expect(window.location.pathname).toBe("/");
   });
 
-  it("navigates from Get Started into the workspace at /app and back", async () => {
+  it("navigates from Explore ClipForge / Start Exploring into the workspace at /app and back", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     render(<RootRouter />);
 
-    const getStartedButtons = screen.getAllByRole("button", {
-      name: /Get Started/i,
-    });
-    fireEvent.click(getStartedButtons[0]);
+    fireEvent.click(screen.getByRole("button", { name: /Start Exploring/i }));
 
     expect(window.location.pathname).toBe("/app");
     expect(screen.getByText("Engine disconnected")).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("ClipForge marketing site and routing", () => {
     expect(window.location.pathname).toBe("/");
     expect(
       screen.getByRole("heading", {
-        name: "Turn Long Videos Into Moments Worth Watching.",
+        name: "Every Long Video Has Its Moments.",
       }),
     ).toBeInTheDocument();
   });

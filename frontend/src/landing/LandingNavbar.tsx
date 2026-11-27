@@ -8,14 +8,12 @@ interface LandingNavbarProps {
 }
 
 const NAV_LINKS = [
-  { label: "Features", hash: "#features" },
-  { label: "How It Works", hash: "#how-it-works" },
+  { label: "Inside", hash: "#interlude" },
+  { label: "Experience", hash: "#experience" },
   { label: "Use Cases", hash: "#use-cases" },
-  { label: "FAQ", hash: "#faq" },
 ];
 
 export default function LandingNavbar({
-  currentRoute,
   onNavigate,
 }: LandingNavbarProps) {
   const [scrolled, setScrolled] = useState(false);
@@ -47,7 +45,7 @@ export default function LandingNavbar({
           aria-label="ClipForge home"
         >
           <span className="brand-icon cf-nav-icon">
-            <Layers2 size={20} />
+            <Layers2 size={18} />
           </span>
           <span>
             ClipForge<span className="brand-dot">.</span>
@@ -71,21 +69,12 @@ export default function LandingNavbar({
         </nav>
 
         <div className="cf-nav-actions">
-          {currentRoute !== "/app" && (
-            <button
-              type="button"
-              className="cf-nav-secondary"
-              onClick={() => onNavigate("/app")}
-            >
-              Open App
-            </button>
-          )}
           <button
             type="button"
             className="primary cf-nav-cta"
             onClick={() => onNavigate("/app")}
           >
-            Get Started <ArrowUpRight size={15} />
+            Explore ClipForge <ArrowUpRight size={15} />
           </button>
           <button
             type="button"
@@ -94,7 +83,7 @@ export default function LandingNavbar({
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((prev) => !prev)}
           >
-            {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+            {mobileOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
       </div>
@@ -118,23 +107,13 @@ export default function LandingNavbar({
             <div className="cf-mobile-actions">
               <button
                 type="button"
-                className="secondary"
-                onClick={() => {
-                  setMobileOpen(false);
-                  onNavigate("/app");
-                }}
-              >
-                Open App
-              </button>
-              <button
-                type="button"
                 className="primary"
                 onClick={() => {
                   setMobileOpen(false);
                   onNavigate("/app");
                 }}
               >
-                Get Started <ArrowUpRight size={15} />
+                Explore ClipForge <ArrowUpRight size={15} />
               </button>
             </div>
           </nav>
