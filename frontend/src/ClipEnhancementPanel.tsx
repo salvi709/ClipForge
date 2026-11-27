@@ -115,12 +115,12 @@ export default function ClipEnhancementPanel({ projectId, clipId, onClose }: Pro
             YouTube Shorts, and TikTok.
           </p>
           <ul>
-            <li>✨ Title and hook suggestions</li>
-            <li>💬 Caption style recommendations</li>
-            <li>📱 Video format optimization</li>
-            <li>✂️ Editing ideas</li>
-            <li>🎵 Music and sound suggestions</li>
-            <li>📤 Social media export presets</li>
+            <li>Title and hook suggestions</li>
+            <li>Caption style recommendations</li>
+            <li>Video format optimization</li>
+            <li>Targeted editing ideas</li>
+            <li>Music and sound suggestions</li>
+            <li>Platform export presets</li>
           </ul>
           <button className="primary" onClick={handleGenerate}>
             <Sparkles size={16} /> Generate Recommendations

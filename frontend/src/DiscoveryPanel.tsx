@@ -3,6 +3,8 @@ import {
   BarChart3,
   Bookmark,
   Check,
+  ChevronDown,
+  ChevronUp,
   CircleAlert,
   Download,
   Link,
@@ -396,11 +398,17 @@ function DiscoveryPanel({
                 onClick={() => setShowMore(prev => !prev)}
                 aria-expanded={showMore}
               >
-                <span><Sparkles size={16} /> More Discoveries ({moreDiscoveries.length} candidate moments)</span>
-                <span>{showMore ? "▲ Hide secondary" : "▼ Explore more"}</span>
+                <span><Sparkles size={15} /> More Discoveries ({moreDiscoveries.length} candidate moments)</span>
+                <span className="more-discoveries-action">
+                  {showMore ? (
+                    <>Hide secondary <ChevronUp size={15} /></>
+                  ) : (
+                    <>Explore more <ChevronDown size={15} /></>
+                  )}
+                </span>
               </button>
               {showMore && (
-                <div className="clip-grid" style={{ marginTop: 14 }}>
+                <div className="clip-grid clip-grid-nested">
                   {moreDiscoveries.map(clip => (
                     <ClipCard
                       key={clip.id}
@@ -440,12 +448,11 @@ function DiscoveryPanel({
 
       {ready && (
         <div className="manual-moments-card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="manual-moments-header">
             <h4><Bookmark size={15} /> Manually Marked Moments ({manualClips.length})</h4>
             <button
               type="button"
-              className="secondary"
-              style={{ padding: "4px 10px", fontSize: 11 }}
+              className="secondary compact-btn"
               onClick={() => setShowManualForm(prev => !prev)}
             >
               <PlusCircle size={13} /> {showManualForm ? "Cancel" : "Mark Missed Moment"}
@@ -499,28 +506,28 @@ function DiscoveryPanel({
             <div className="manual-clips-list">
               {manualClips.map(m => (
                 <div key={m.id} className="manual-clip-item">
-                  <div>
+                  <div className="manual-clip-meta">
                     <strong>{m.title}</strong>
-                    <span style={{ color: "#709fd0", marginLeft: 10, fontFamily: "JetBrains Mono" }}>
+                    <span className="manual-clip-time">
                       {timestamp(m.start ?? 0)} – {timestamp(m.end ?? 0)} ({((m.duration ?? ((m.end ?? 0) - (m.start ?? 0))) || 0).toFixed(1)}s)
                     </span>
-                    {m.notes && <span style={{ color: "#92979e", marginLeft: 8 }}>· {m.notes}</span>}
+                    {m.notes && <span className="manual-clip-notes">· {m.notes}</span>}
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="secondary" style={{ padding: "3px 8px", fontSize: 11 }} onClick={() => void onPreview(m.start, m.end)}>
+                  <div className="manual-clip-actions">
+                    <button type="button" className="secondary compact-btn" onClick={() => void onPreview(m.start, m.end)}>
                       <Play size={12} /> Preview
                     </button>
                     <button
                       type="button"
-                      className="text-button"
-                      style={{ color: "#f87171" }}
+                      className="icon-button icon-danger"
+                      aria-label={`Delete manual moment ${m.title}`}
                       onClick={async () => {
                         await deleteManualClip(projectId, m.id);
                         setManualClips(prev => prev.filter(x => x.id !== m.id));
                         void loadFeedbackAndManual();
                       }}
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -850,7 +857,7 @@ function ClipCard({
               title={`Rate as ${r}`}
               disabled={feedbackLoading}
             >
-              {r === 'excellent' ? '⭐ Excellent' : r === 'good' ? '👍 Good' : r === 'average' ? '👌 Average' : '👎 Bad'}
+              {r === 'excellent' ? 'Excellent' : r === 'good' ? 'Good' : r === 'average' ? 'Average' : 'Bad'}
             </button>
           ))}
         </div>
@@ -919,21 +926,21 @@ function ClipCard({
             <div className="evidence-section">
               <h5>Audio & Visual Signals</h5>
               <div className="factor-row">
-                <span title="Speech clarity and audio quality">🔊 Audio Relevance</span>
+                <span title="Speech clarity and audio quality">Audio Relevance</span>
                 <div className="factor-bar">
                   <div className="factor-fill audio" style={{ width: `${clip.scoring_factors.audio_relevance || 80}%` }}></div>
                 </div>
                 <span className="factor-value">{(clip.scoring_factors.audio_relevance || 80).toFixed(0)}</span>
               </div>
               <div className="factor-row">
-                <span title="Scene composition and visual interest">🎬 Visual Relevance</span>
+                <span title="Scene composition and visual interest">Visual Relevance</span>
                 <div className="factor-bar">
                   <div className="factor-fill visual" style={{ width: `${clip.scoring_factors.visual_relevance || 75}%` }}></div>
                 </div>
                 <span className="factor-value">{(clip.scoring_factors.visual_relevance || 75).toFixed(0)}</span>
               </div>
               <div className="factor-row">
-                <span title="Clean beginning and ending points">✂️ Boundary Quality</span>
+                <span title="Clean beginning and ending points">Boundary Quality</span>
                 <div className="factor-bar">
                   <div className="factor-fill" style={{ width: `${clip.scoring_factors.boundary_quality}%` }}></div>
                 </div>
